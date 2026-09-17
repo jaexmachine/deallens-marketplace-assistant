@@ -1,0 +1,22 @@
+.deallens-badge {
+  align-items: center;
+  background: #18231f;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 999px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.28);
+  color: #fff;
+  display: inline-flex;
+  font: 700 12px/1 system-ui, sans-serif;
+  height: 30px;
+  justify-content: center;
+  min-width: 30px;
+  padding: 0 8px;
+  pointer-events: none;
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 20;
+}
+.deallens-score-high { background: #087c5c; }
+.deallens-score-mid { background: #a45b08; }
+.deallens-score-low { background: #9b3240; }

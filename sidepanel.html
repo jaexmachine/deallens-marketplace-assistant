@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DealLens</title>
+  <link rel="stylesheet" href="styles/panel.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-mark">D</div>
+    <div>
+      <h1>DealLens</h1>
+      <p>Local Marketplace deal assistant</p>
+    </div>
+    <span class="privacy-pill">On-device</span>
+  </header>
+
+  <main>
+    <section class="hero-card">
+      <div>
+        <p class="eyebrow">CURRENT SEARCH</p>
+        <h2 id="scanHeadline">Ready to inspect listings</h2>
+        <p id="scanDetail">Open Marketplace results, then scan what is loaded.</p>
+      </div>
+      <button id="scanButton" class="primary-button">Scan loaded results</button>
+      <label class="toggle-row">
+        <span>Analyze new results while scrolling</span>
+        <input id="liveToggle" type="checkbox" checked>
+      </label>
+    </section>
+
+    <nav class="tabs" aria-label="DealLens sections">
+      <button class="tab active" data-tab="deals">Deals</button>
+      <button class="tab" data-tab="watchlist">Watchlist</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </nav>
+
+    <section id="dealsPanel" class="panel active">
+      <div class="summary-grid">
+        <article><strong id="totalCount">0</strong><span>scanned</span></article>
+        <article><strong id="dealCount">0</strong><span>good deals</span></article>
+        <article><strong id="riskCount">0</strong><span>price/risk flags</span></article>
+      </div>
+      <div class="toolbar">
+        <label class="search-field"><span>⌕</span><input id="filterInput" type="search" placeholder="Filter listings"></label>
+        <select id="sortSelect" aria-label="Sort listings">
+          <option value="score">Best score</option>
+          <option value="newest">Newest</option>
+          <option value="priceLow">Lowest price</option>
+          <option value="profit">Highest estimated profit</option>
+          <option value="risk">Lowest risk</option>
+        </select>
+      </div>
+      <div id="listingList" class="listing-list"></div>
+      <div id="emptyState" class="empty-state">
+        <div class="radar-icon">◎</div>
+        <h3>No listings scanned yet</h3>
+        <p>DealLens analyzes only Marketplace results that are visible or loaded in your browser.</p>
+      </div>
+    </section>
+
+    <section id="watchlistPanel" class="panel">
+      <div id="watchlistList" class="listing-list"></div>
+      <div id="watchEmpty" class="empty-state"><h3>Your watchlist is empty</h3><p>Save a listing from the Deals tab to track it locally.</p></div>
+    </section>
+
+    <section id="settingsPanel" class="panel">
+      <form id="settingsForm" class="settings-card">
+        <label>Maximum purchase price <span>PHP</span><input name="maxPrice" type="number" min="0" step="500"></label>
+        <label>Minimum good-deal score <span>0–100</span><input name="minimumScore" type="number" min="0" max="100"></label>
+        <label>Default repair + transport costs <span>PHP</span><input name="defaultCosts" type="number" min="0" step="100"></label>
+        <label>Product keywords <span>comma separated</span><textarea name="keywords" rows="3"></textarea></label>
+        <button class="primary-button" type="submit">Save settings</button>
+      </form>
+      <button id="clearData" class="danger-button">Clear locally saved listings</button>
+      <p class="fine-print">DealLens stores preferences, scans, and watchlists only in Chrome local storage. Scores are estimates based on asking prices—not confirmed sales.</p>
+    </section>
+  </main>
+
+  <dialog id="detailDialog">
+    <form method="dialog"><button class="close-button" aria-label="Close">×</button></form>
+    <div id="detailContent"></div>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="src/scoring.js"></script>
+  <script src="src/sidepanel.js"></script>
+</body>
+</html>
