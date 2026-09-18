@@ -7,6 +7,8 @@
   const $ = selector => document.querySelector(selector);
   const money = value => Number.isFinite(value) ? `₱${Math.round(value).toLocaleString("en-PH")}` : "—";
   const escapeHtml = value => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
+  let loadTimer = null;
+  let loadQueue = Promise.resolve();
 
   function showToast(message) {
     const toast = $("#toast");
@@ -40,6 +42,13 @@
       await chrome.storage.local.remove(["dealLensSelectedId"]);
       if (selected) showDetails(selected);
     }
+  }
+
+  function scheduleLoadState() {
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(() => {
+      loadQueue = loadQueue.catch(() => {}).then(loadState);
+    }, 120);
   }
 
   function filteredListings(watchOnly = false) {
@@ -431,7 +440,7 @@
     showToast("Personalization reset");
   });
   chrome.runtime.onMessage.addListener(message => {
-    if (message?.type === "DEALLENS_UPDATED") loadState();
+    if (message?.type === "DEALLENS_UPDATED") scheduleLoadState();
     if (message?.type === "DEALLENS_SHOW_DETAILS" && message.listingId) {
       loadState().then(() => {
         const item = state.listings.find(value => value.id === message.listingId);

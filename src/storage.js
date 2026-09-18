@@ -103,7 +103,20 @@
     }
   }
 
-  const api = { MAX_LISTINGS, sanitizeListing, sanitizeAudit, pruneListings, listingMap, isQuotaError, persist };
+  function mergeCurrentScan(previous, next) {
+    if (!next) return { value: previous || null, changed: false };
+    const samePage = previous?.tabId === next.tabId && previous?.pageKey && previous.pageKey === next.pageKey;
+    const ids = samePage ? [...new Set([...(previous.ids || []), ...(next.ids || [])])] : [...new Set(next.ids || [])];
+    const value = { ...next, ids };
+    const changed = !previous
+      || previous.tabId !== value.tabId
+      || previous.pageKey !== value.pageKey
+      || ids.length !== (previous.ids || []).length
+      || ids.some((id, index) => id !== previous.ids[index]);
+    return { value, changed };
+  }
+
+  const api = { MAX_LISTINGS, sanitizeListing, sanitizeAudit, pruneListings, listingMap, isQuotaError, persist, mergeCurrentScan };
   root.DealLensStorage = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

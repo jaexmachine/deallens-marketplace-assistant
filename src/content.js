@@ -5,6 +5,38 @@
   const seen = new Set();
   let liveEnabled = true;
   let debounceTimer = null;
+  let observer = null;
+  let disposed = false;
+
+  function stopScanner() {
+    disposed = true;
+    liveEnabled = false;
+    clearTimeout(debounceTimer);
+    observer?.disconnect();
+    const status = document.querySelector("#deallens-scan-control small");
+    if (status) status.textContent = "Extension updated — refresh this tab";
+  }
+
+  function runtimeMessage(payload) {
+    try {
+      if (disposed || !chrome.runtime?.id) throw new Error("Extension context invalidated.");
+      return chrome.runtime.sendMessage(payload).catch(error => {
+        if (DealLensScan.isContextInvalidated(error)) stopScanner();
+        throw error;
+      });
+    } catch (error) {
+      if (DealLensScan.isContextInvalidated(error)) stopScanner();
+      return Promise.reject(error);
+    }
+  }
+
+  function handleAutomaticScanError(error) {
+    if (DealLensScan.isContextInvalidated(error)) {
+      stopScanner();
+      return;
+    }
+    console.warn("DealLens automatic scan paused", error);
+  }
 
   function cleanText(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
@@ -71,7 +103,7 @@
       badge.addEventListener("click", event => {
         event.preventDefault();
         event.stopPropagation();
-        chrome.runtime.sendMessage({ type: "DEALLENS_OPEN_DETAILS", listingId: listing.id }).catch(() => {});
+        runtimeMessage({ type: "DEALLENS_OPEN_DETAILS", listingId: listing.id }).catch(() => {});
       });
     }
     if (!badge.isConnected) {
@@ -81,6 +113,7 @@
   }
 
   async function performScan(force = false) {
+    if (disposed) throw new Error("DealLens was updated. Refresh this Marketplace tab.");
     const allAnchors = [...document.querySelectorAll(`a[href*="${ITEM_PATH}"]`)];
     const unique = new Map();
     allAnchors.forEach(anchor => {
@@ -89,6 +122,9 @@
     });
     const anchors = [...unique.values()];
     const pageListings = anchors.map(extractListing).filter(Boolean);
+    if (!force && !pageListings.length) {
+      return { found: 0, analyzed: 0, totalAnchors: anchors.length, ignoredEmpty: true, newCount: 0, saved: 0 };
+    }
     const extracted = pageListings.filter(listing => force || !seen.has(listing.id));
     extracted.forEach(listing => {
       seen.add(listing.id);
@@ -96,11 +132,13 @@
       applyBadge(listingContainer(anchor), listing, { pending: true });
     });
     const saved = await DealLensScan.withTimeout(
-      chrome.runtime.sendMessage({
+      runtimeMessage({
         type: "DEALLENS_RESULTS",
         listings: extracted,
         visibleIds: pageListings.map(listing => listing.id),
-        pageUrl: location.href
+        pageUrl: location.href,
+        pageKey: DealLensScan.marketplacePageKey(location.href),
+        preserveCurrent: location.pathname.startsWith(ITEM_PATH)
       }),
       15000,
       "DealLens storage did not respond. Try scanning again."
@@ -168,15 +206,20 @@
     return false;
   });
 
-  const observer = new MutationObserver(mutations => {
-    if (!liveEnabled || !DealLensScan.hasMarketplaceMutation(mutations)) return;
+  observer = new MutationObserver(mutations => {
+    if (disposed || !liveEnabled || !DealLensScan.hasMarketplaceMutation(mutations)) return;
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => scanPage(false), 900);
+    debounceTimer = setTimeout(() => scanPage(false).catch(handleAutomaticScanError), 900);
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
-  chrome.storage.local.get(["dealLensSettings"]).then(stored => {
-    liveEnabled = stored.dealLensSettings?.liveAnalysis !== false;
-    ensureScanControl();
-    setTimeout(() => scanPage(false), 1200);
-  });
+  try {
+    chrome.storage.local.get(["dealLensSettings"]).then(stored => {
+      if (disposed) return;
+      liveEnabled = stored.dealLensSettings?.liveAnalysis !== false;
+      ensureScanControl();
+      setTimeout(() => scanPage(false).catch(handleAutomaticScanError), 1200);
+    }).catch(handleAutomaticScanError);
+  } catch (error) {
+    handleAutomaticScanError(error);
+  }
 })();

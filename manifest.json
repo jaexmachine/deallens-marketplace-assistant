@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "DealLens – Marketplace Deal Assistant",
   "short_name": "DealLens",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Locally analyze visible Marketplace listings for price trends, flip potential, and risk signals.",
   "minimum_chrome_version": "114",
   "permissions": ["activeTab", "storage", "sidePanel", "tabs", "scripting"],

@@ -2,7 +2,7 @@
 
 DealLens is a free, local-only Chrome extension that analyzes Facebook Marketplace electronics listings currently visible or loaded in your browser. It estimates deal potential using comparable asking prices, highlights suspicious or placeholder pricing, and prepares questions for sellers. It does not log in for you, run unattended scraping, send messages, or use paid AI services.
 
-Version 0.4.3 fixes Chrome local-storage quota failures. DealLens no longer stores derived score/comparable objects inside every listing, removes unusable embedded image data, bounds local history to 350 recent listings while prioritizing watched/current items, and automatically compacts older stored data after an update. Storage errors now return immediately instead of appearing as a scanner timeout. Version 0.4.2 fixed overlapping live/manual scans and separated the active page from local history.
+Version 0.4.4 stabilizes results on Facebook's virtualized pages. Live scans accumulate products for the same search, ignore temporary empty snapshots, and preserve the search list while opening an individual item. Background writes are serialized and panel refreshes are debounced. If an unpacked-extension reload invalidates an older content script, it now shuts down quietly and asks for one page refresh instead of producing an uncaught error. Version 0.4.3 fixed Chrome local-storage quota failures and bounded sanitized history.
 
 ## Install
 
