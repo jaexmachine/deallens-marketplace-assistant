@@ -2,11 +2,14 @@
   "manifest_version": 3,
   "name": "DealLens – Marketplace Deal Assistant",
   "short_name": "DealLens",
-  "version": "0.1.0",
+  "version": "0.4.3",
   "description": "Locally analyze visible Marketplace listings for price trends, flip potential, and risk signals.",
   "minimum_chrome_version": "114",
-  "permissions": ["activeTab", "storage", "sidePanel", "tabs"],
-  "host_permissions": ["https://www.facebook.com/marketplace/*"],
+  "permissions": ["activeTab", "storage", "sidePanel", "tabs", "scripting"],
+  "host_permissions": [
+    "https://facebook.com/marketplace/*",
+    "https://*.facebook.com/marketplace/*"
+  ],
   "background": {
     "service_worker": "src/background.js"
   },
@@ -30,8 +33,11 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.facebook.com/marketplace/*"],
-      "js": ["src/scoring.js", "src/content.js"],
+      "matches": [
+        "https://facebook.com/marketplace/*",
+        "https://*.facebook.com/marketplace/*"
+      ],
+      "js": ["src/scoring.js", "src/scan-coordinator.js", "src/content.js"],
       "css": ["styles/content.css"],
       "run_at": "document_idle"
     }

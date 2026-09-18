@@ -121,6 +121,29 @@
       .slice(0, 20);
   }
 
+  function preferenceSignals(listing) {
+    const text = `${listing.title || ""} ${listing.text || ""}`;
+    const specs = listing.specs || extractSpecs(text);
+    const signals = titleTokens(listing.title || text).slice(0, 8).map(token => `token:${token}`);
+    signals.push(`category:${classifyCategory(text).toLowerCase()}`);
+    ["model", "cpu", "gpu"].forEach(key => {
+      if (specs[key]) signals.push(`${key}:${String(specs[key]).toLowerCase()}`);
+    });
+    if (specs.ramGb) signals.push(`ram:${specs.ramGb}`);
+    if (specs.storageGb) signals.push(`storage:${specs.storageGb}`);
+    if (Number(listing.price) > 0) signals.push(`priceBand:${Math.floor(Number(listing.price) / 10000) * 10000}`);
+    return [...new Set(signals)];
+  }
+
+  function personalizationFor(listing, preferenceModel = {}) {
+    const weights = preferenceModel.weights || {};
+    const signals = preferenceSignals(listing);
+    const weighted = signals.reduce((sum, signal) => sum + (Number(weights[signal]) || 0), 0);
+    const confidence = Math.min(1, (Number(preferenceModel.feedbackCount) || 0) / 8);
+    const adjustment = Math.round(clamp((weighted / Math.max(1, Math.sqrt(signals.length))) * (0.55 + confidence * 0.45) * 3, -18, 18));
+    return { adjustment, signals, confidence };
+  }
+
   function trendFor(listing, listings) {
     const comparables = findComparables(listing, listings);
     const prices = comparables.map(item => item.price).filter(price => price > 1234);
@@ -129,7 +152,7 @@
       median: median(prices),
       low: percentile(prices, 0.25),
       high: percentile(prices, 0.75),
-      comparables
+      comparableIds: comparables.map(item => item.id)
     };
   }
 
@@ -175,11 +198,26 @@
     return { score: clamp(score, 0, 100), reasons };
   }
 
-  function scoreListing(listing, allListings = [], settings = {}) {
+  function completenessFor(listing, specs) {
+    const title = String(listing.title || "").trim();
+    const text = String(listing.text || "").trim();
+    let score = 15;
+    if (title.length >= 8) score += 15;
+    if (text.length >= 60) score += 15;
+    if (text.length >= 140) score += 10;
+    if (Number(listing.price) > 0) score += 15;
+    score += Math.min(25, Object.keys(specs || {}).length * 5);
+    if (listing.location) score += 5;
+    return clamp(score, 0, 100);
+  }
+
+  function scoreListing(listing, allListings = [], settings = {}, preferenceModel = {}) {
     const trend = trendFor(listing, allListings);
     const placeholder = isPlaceholderPrice(listing, trend);
     const risk = analyzeRisk(listing, placeholder);
     const condition = analyzeCondition(listing);
+    const specs = extractSpecs(`${listing.title || ""} ${listing.text || ""}`);
+    const completeness = completenessFor(listing, specs);
     const price = Number(listing.price) || 0;
     const hasItemCosts = [listing.repairCost, listing.transportCost, listing.otherCost].some(value => Number(value) > 0);
     const costs = hasItemCosts
@@ -188,41 +226,69 @@
     const referenceValue = Number(listing.manualReferencePrice) || trend.median || null;
     const expectedProfit = referenceValue && price && !placeholder.value ? Math.round(referenceValue - price - costs) : null;
     const margin = expectedProfit !== null && price > 0 ? expectedProfit / price : null;
-    let dealScore = 42;
     const reasons = [];
+    const personalization = personalizationFor(listing, preferenceModel);
+    const components = {
+      value: null,
+      condition: Math.round(condition.score),
+      safety: Math.round(100 - risk.score),
+      completeness: Math.round(completeness),
+      fit: 50
+    };
+    let scoreStatus = "provisional";
+    let confidence = Math.round(clamp(15 + completeness * 0.25 + trend.count * 6, 15, 55));
 
     if (referenceValue && price > 0 && !placeholder.value) {
-      const discount = (referenceValue - price) / referenceValue;
-      dealScore += clamp(discount * 85, -35, 42);
+      const discount = (referenceValue - price - costs) / referenceValue;
+      components.value = Math.round(clamp(50 + discount * 125, 0, 100));
+      scoreStatus = "valued";
+      confidence = listing.manualReferencePrice
+        ? 88
+        : Math.round(clamp(42 + trend.count * 9, 42, 94));
       if (discount >= 0.25) reasons.push(`Asking price is ${Math.round(discount * 100)}% below the comparable median`);
       else if (discount < 0) reasons.push(`Asking price is ${Math.round(Math.abs(discount) * 100)}% above the comparable median`);
+      else reasons.push("Asking price is close to the current comparable range");
     } else {
-      reasons.push("More comparable listings are needed for a confident valuation");
+      reasons.push("Provisional score — scan similar items to unlock price-based valuation");
     }
-    dealScore += (condition.score - 50) * 0.16;
-    dealScore -= risk.score * 0.28;
-    dealScore += clamp(trend.count * 2, 0, 10);
+    components.fit += personalization.adjustment * 1.8;
+    if (personalization.adjustment >= 3) reasons.push(`Personalized boost: similar to items you saved (+${personalization.adjustment})`);
+    if (personalization.adjustment <= -3) reasons.push(`Personalized reduction: resembles dismissed items (${personalization.adjustment})`);
     const keywords = String(settings.keywords || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
     if (keywords.length) {
       const haystack = `${listing.title || ""} ${listing.text || ""}`.toLowerCase();
       if (keywords.some(keyword => haystack.includes(keyword))) {
-        dealScore += 6;
+        components.fit += 14;
         reasons.push("Matches your saved product interests");
       }
     }
-    if (placeholder.value) {
-      dealScore = Math.min(dealScore, 55);
-      reasons.unshift("Price is unverified and may be a placeholder");
-    }
     if (Number(settings.maxPrice) > 0 && price > Number(settings.maxPrice)) {
-      dealScore -= 12;
+      components.fit -= 24;
       reasons.push("Price exceeds your saved maximum budget");
+    } else if (Number(settings.maxPrice) > 0 && price > 0 && price <= Number(settings.maxPrice)) {
+      components.fit += 6;
+    }
+    components.fit = Math.round(clamp(components.fit, 0, 100));
+
+    const weights = components.value === null
+      ? { condition: 0.25, safety: 0.30, completeness: 0.20, fit: 0.25 }
+      : { value: 0.50, condition: 0.14, safety: 0.14, completeness: 0.08, fit: 0.14 };
+    let dealScore = Object.entries(weights).reduce((sum, [key, weight]) => sum + components[key] * weight, 0);
+    if (components.value === null) dealScore = Math.min(dealScore, 69);
+    if (placeholder.value) {
+      dealScore = Math.min(dealScore, 49);
+      scoreStatus = "unverified";
+      confidence = Math.min(confidence, 30);
+      reasons.unshift("Price is unverified and may be a placeholder");
     }
     if (expectedProfit !== null && expectedProfit > 0) reasons.push(`Estimated gross profit is ₱${expectedProfit.toLocaleString("en-PH")}`);
     risk.reasons.slice(0, 2).forEach(reason => reasons.push(reason));
 
     return {
       score: Math.round(clamp(dealScore, 0, 100)),
+      scoreStatus,
+      confidence,
+      components,
       risk,
       condition,
       placeholder,
@@ -233,7 +299,8 @@
       margin,
       reasons: [...new Set(reasons)].slice(0, 5),
       category: classifyCategory(`${listing.title || ""} ${listing.text || ""}`),
-      specs: extractSpecs(`${listing.title || ""} ${listing.text || ""}`)
+      specs,
+      personalization
     };
   }
 
@@ -244,7 +311,7 @@
     return [...new Set(tokens)].slice(0, 7).join(" ");
   }
 
-  const api = { parsePrice, extractSpecs, classifyCategory, similarity, findComparables, trendFor, isPlaceholderPrice, analyzeRisk, analyzeCondition, scoreListing, buildSearchQuery, median, percentile };
+  const api = { parsePrice, extractSpecs, classifyCategory, similarity, findComparables, trendFor, isPlaceholderPrice, analyzeRisk, analyzeCondition, completenessFor, scoreListing, buildSearchQuery, preferenceSignals, personalizationFor, median, percentile };
   root.DealLens = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

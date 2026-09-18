@@ -24,6 +24,10 @@
         <p id="scanDetail">Open Marketplace results, then scan what is loaded.</p>
       </div>
       <button id="scanButton" class="primary-button">Scan loaded results</button>
+      <div id="scanStatus" class="scan-status" data-state="idle">
+        <span class="status-dot"></span>
+        <span id="scanStatusText">Waiting for your first scan</span>
+      </div>
       <label class="toggle-row">
         <span>Analyze new results while scrolling</span>
         <input id="liveToggle" type="checkbox" checked>
@@ -38,12 +42,19 @@
 
     <section id="dealsPanel" class="panel active">
       <div class="summary-grid">
-        <article><strong id="totalCount">0</strong><span>scanned</span></article>
-        <article><strong id="dealCount">0</strong><span>good deals</span></article>
+        <article><strong id="totalCount">0</strong><span>on this page</span></article>
+        <article><strong id="dealCount">0</strong><span>promising</span></article>
         <article><strong id="riskCount">0</strong><span>price/risk flags</span></article>
       </div>
       <div class="toolbar">
         <label class="search-field"><span>⌕</span><input id="filterInput" type="search" placeholder="Filter listings"></label>
+        <select id="scopeSelect" aria-label="Filter by score">
+          <option value="promising">Promising on this page</option>
+          <option value="current">All on this page</option>
+          <option value="good">Verified-value deals</option>
+          <option value="flagged">Risk/price flags</option>
+          <option value="history">All local history</option>
+        </select>
         <select id="sortSelect" aria-label="Sort listings">
           <option value="score">Best score</option>
           <option value="newest">Newest</option>
@@ -55,8 +66,8 @@
       <div id="listingList" class="listing-list"></div>
       <div id="emptyState" class="empty-state">
         <div class="radar-icon">◎</div>
-        <h3>No listings scanned yet</h3>
-        <p>DealLens analyzes only Marketplace results that are visible or loaded in your browser.</p>
+        <h3 id="emptyTitle">No listings scanned yet</h3>
+        <p id="emptyMessage">DealLens analyzes only Marketplace results that are visible or loaded in your browser.</p>
       </div>
     </section>
 
@@ -73,6 +84,12 @@
         <label>Product keywords <span>comma separated</span><textarea name="keywords" rows="3"></textarea></label>
         <button class="primary-button" type="submit">Save settings</button>
       </form>
+      <section class="learning-card">
+        <div><strong>Personalization</strong><span id="learningStatus">No feedback yet</span></div>
+        <p>Watching items teaches DealLens what you like. Dismissing items teaches it what to show less often.</p>
+        <button id="resetLearning" class="quiet-button">Reset learned preferences</button>
+      </section>
+      <button id="restoreDismissed" class="quiet-button">Allow dismissed listings again (<span id="dismissedCount">0</span>)</button>
       <button id="clearData" class="danger-button">Clear locally saved listings</button>
       <p class="fine-print">DealLens stores preferences, scans, and watchlists only in Chrome local storage. Scores are estimates based on asking prices—not confirmed sales.</p>
     </section>
@@ -85,6 +102,8 @@
 
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="src/scoring.js"></script>
+  <script src="src/storage.js"></script>
+  <script src="src/ai-auditor.js"></script>
   <script src="src/sidepanel.js"></script>
 </body>
 </html>

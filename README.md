@@ -2,6 +2,8 @@
 
 DealLens is a free, local-only Chrome extension that analyzes Facebook Marketplace electronics listings currently visible or loaded in your browser. It estimates deal potential using comparable asking prices, highlights suspicious or placeholder pricing, and prepares questions for sellers. It does not log in for you, run unattended scraping, send messages, or use paid AI services.
 
+Version 0.4.3 fixes Chrome local-storage quota failures. DealLens no longer stores derived score/comparable objects inside every listing, removes unusable embedded image data, bounds local history to 350 recent listings while prioritizing watched/current items, and automatically compacts older stored data after an update. Storage errors now return immediately instead of appearing as a scanner timeout. Version 0.4.2 fixed overlapping live/manual scans and separated the active page from local history.
+
 ## Install
 
 1. Extract `DealLens-MVP.zip` to a permanent folder.
@@ -19,6 +21,18 @@ DealLens is a free, local-only Chrome extension that analyzes Facebook Marketpla
 4. Scroll to load more Marketplace results. Live analysis is enabled by default.
 5. Open a listing's **Details** to see its reasoning, price range, risk signals, and seller-message draft.
 6. Use **Find similar** to open a Marketplace search based on the detected model and specifications; scan those results to improve the local price range.
+
+The scan-status line reports how many visible cards were found, how many were new, and when the scan completed. **Promising on this page** applies the minimum score to both valued and provisional candidates. **Verified-value deals** shows only listings with usable comparable or manually supplied values. Use **All local history** to review products from earlier searches.
+
+Deal Scores now combine market value, condition, safety, listing completeness, and personal fit. A score prefixed with `~` is provisional because DealLens does not yet have a usable reference value. Provisional listings cannot be labeled Good Deals. Scan similar items or enter a manual reference value to unlock a valued score and profit estimate. The Details view shows every component and confidence level.
+
+Use **Watch** as positive feedback and **Remove** as negative feedback. Removed listings stay dismissed on later scans. Settings lets you allow dismissed listings again or reset the learned preference model.
+
+## Optional local AI text audit
+
+Open a listing's Details and select **Run local text audit**. On supported computers, Chrome's built-in Prompt API analyzes the listing text with an on-device model. DealLens checks availability first and reports model-download progress. The audit extracts evidence-backed defect signals, possible contradictions, specifications, advisory liquidity, and verification questions.
+
+The AI audit is optional and never changes repair costs, comparable values, liquidity haircuts, or Deal Scores automatically. It does not send text to an external AI service and uses no API key. The original rule engine remains fully functional when built-in AI is unavailable. Chrome may require a substantial one-time model download and supported hardware. Filipino/Taglish interpretation should be treated cautiously because it is not an officially declared Prompt API language.
 
 The toolbar badge shows how many promising listings were detected in the latest batch. The Details view also lets you override the reference value, enter item-specific repair and transport costs, follow an electronics inspection checklist, and record eventual purchase/resale outcomes.
 

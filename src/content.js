@@ -56,37 +56,102 @@
   function applyBadge(container, listing, scoreData) {
     if (!container) return;
     let badge = container.querySelector(`.deallens-badge[data-id="${CSS.escape(String(listing.id))}"]`);
-    if (!badge) badge = document.createElement("span");
-    badge.className = `deallens-badge deallens-score-${scoreData.score >= 75 ? "high" : scoreData.score >= 55 ? "mid" : "low"}`;
+    if (!badge) badge = document.createElement("button");
+    const pending = scoreData.pending === true;
+    badge.className = pending
+      ? "deallens-badge deallens-score-pending"
+      : `deallens-badge deallens-score-${scoreData.score >= 75 ? "high" : scoreData.score >= 55 ? "mid" : "low"}`;
     badge.dataset.id = listing.id;
-    badge.textContent = scoreData.placeholder.value ? "Price?" : `${scoreData.score}`;
-    badge.title = scoreData.reasons.join(" • ");
+    badge.type = "button";
+    badge.textContent = pending ? "…" : scoreData.placeholder.value ? "Price?" : scoreData.scoreStatus === "provisional" ? `~${scoreData.score}` : `${scoreData.score}`;
+    badge.title = pending ? "DealLens is calculating this score" : `${scoreData.scoreStatus === "provisional" ? "Provisional score" : "Deal score"} · Click for details · ${scoreData.reasons.join(" • ")}`;
+    badge.setAttribute("aria-label", `Open DealLens details for ${listing.title}`);
+    if (!badge.dataset.bound) {
+      badge.dataset.bound = "true";
+      badge.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        chrome.runtime.sendMessage({ type: "DEALLENS_OPEN_DETAILS", listingId: listing.id }).catch(() => {});
+      });
+    }
     if (!badge.isConnected) {
       container.style.position ||= "relative";
       container.appendChild(badge);
     }
   }
 
-  async function scanPage(force = false) {
-    const anchors = [...document.querySelectorAll(`a[href*="${ITEM_PATH}"]`)];
-    const extracted = [];
-    anchors.forEach(anchor => {
-      const listing = extractListing(anchor);
-      if (!listing || (!force && seen.has(listing.id))) return;
-      seen.add(listing.id);
-      extracted.push(listing);
-      const quickScore = DealLens.scoreListing(listing, [], {});
-      applyBadge(listingContainer(anchor), listing, quickScore);
+  async function performScan(force = false) {
+    const allAnchors = [...document.querySelectorAll(`a[href*="${ITEM_PATH}"]`)];
+    const unique = new Map();
+    allAnchors.forEach(anchor => {
+      const match = new URL(anchor.href, location.origin).pathname.match(/\/marketplace\/item\/(\d+)/);
+      if (match?.[1] && !unique.has(match[1])) unique.set(match[1], anchor);
     });
-    if (extracted.length) {
-      await chrome.runtime.sendMessage({ type: "DEALLENS_RESULTS", listings: extracted }).catch(() => {});
-    }
-    return { found: extracted.length, totalAnchors: anchors.length };
+    const anchors = [...unique.values()];
+    const pageListings = anchors.map(extractListing).filter(Boolean);
+    const extracted = pageListings.filter(listing => force || !seen.has(listing.id));
+    extracted.forEach(listing => {
+      seen.add(listing.id);
+      const anchor = unique.get(String(listing.id));
+      applyBadge(listingContainer(anchor), listing, { pending: true });
+    });
+    const saved = await DealLensScan.withTimeout(
+      chrome.runtime.sendMessage({
+        type: "DEALLENS_RESULTS",
+        listings: extracted,
+        visibleIds: pageListings.map(listing => listing.id),
+        pageUrl: location.href
+      }),
+      15000,
+      "DealLens storage did not respond. Try scanning again."
+    );
+    if (saved?.error) throw new Error(saved.error);
+    return {
+      found: pageListings.length,
+      analyzed: extracted.length,
+      totalAnchors: anchors.length,
+      newCount: saved?.newCount || 0,
+      saved: saved?.saved || 0,
+      storageRecovered: saved?.storageRecovered === true
+    };
+  }
+
+  const scanPage = DealLensScan.createSingleFlight(performScan);
+
+  function ensureScanControl() {
+    if (document.querySelector("#deallens-scan-control") || !document.body) return;
+    const control = document.createElement("div");
+    control.id = "deallens-scan-control";
+    control.innerHTML = '<button type="button"><span>◎</span> Scan with DealLens</button><small>Ready</small>';
+    const button = control.querySelector("button");
+    const status = control.querySelector("small");
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      status.textContent = "Scanning loaded products…";
+      control.dataset.state = "scanning";
+      try {
+        const result = await scanPage(true);
+        status.textContent = result.storageRecovered ? `${result.found} visible · storage cleaned` : `${result.found} visible · ${result.newCount} new`;
+        control.dataset.state = "done";
+      } catch {
+        status.textContent = "Scan failed — refresh Marketplace";
+        control.dataset.state = "error";
+      } finally {
+        button.disabled = false;
+      }
+    });
+    document.body.appendChild(control);
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type === "DEALLENS_PING") {
+      sendResponse({ ready: true });
+      return false;
+    }
     if (message?.type === "DEALLENS_SCAN") {
-      scanPage(true).then(sendResponse);
+      scanPage(true)
+        .then(sendResponse)
+        .catch(error => sendResponse({ error: error?.message || "Scan failed" }));
       return true;
     }
     if (message?.type === "DEALLENS_LIVE") {
@@ -103,14 +168,15 @@
     return false;
   });
 
-  const observer = new MutationObserver(() => {
-    if (!liveEnabled) return;
+  const observer = new MutationObserver(mutations => {
+    if (!liveEnabled || !DealLensScan.hasMarketplaceMutation(mutations)) return;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => scanPage(false), 900);
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   chrome.storage.local.get(["dealLensSettings"]).then(stored => {
     liveEnabled = stored.dealLensSettings?.liveAnalysis !== false;
+    ensureScanControl();
     setTimeout(() => scanPage(false), 1200);
   });
 })();
