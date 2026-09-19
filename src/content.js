@@ -92,10 +92,10 @@
     const pending = scoreData.pending === true;
     badge.className = pending
       ? "deallens-badge deallens-score-pending"
-      : `deallens-badge deallens-score-${scoreData.score >= 75 ? "high" : scoreData.score >= 55 ? "mid" : "low"}`;
+      : `deallens-badge deallens-score-${scoreData.score >= 7.5 ? "high" : scoreData.score >= 5.5 ? "mid" : "low"}`;
     badge.dataset.id = listing.id;
     badge.type = "button";
-    badge.textContent = pending ? "…" : scoreData.placeholder.value ? "Price?" : scoreData.scoreStatus === "provisional" ? `~${scoreData.score}` : `${scoreData.score}`;
+    badge.textContent = pending ? "…" : scoreData.placeholder.value ? "Price?" : scoreData.scoreStatus === "provisional" ? `~${Number(scoreData.score).toFixed(1)}` : Number(scoreData.score).toFixed(1);
     badge.title = pending ? "DealLens is calculating this score" : `${scoreData.scoreStatus === "provisional" ? "Provisional score" : "Deal score"} · Click for details · ${scoreData.reasons.join(" • ")}`;
     badge.setAttribute("aria-label", `Open DealLens details for ${listing.title}`);
     if (!badge.dataset.bound) {
@@ -138,6 +138,7 @@
         visibleIds: pageListings.map(listing => listing.id),
         pageUrl: location.href,
         pageKey: DealLensScan.marketplacePageKey(location.href),
+        manual: force,
         preserveCurrent: location.pathname.startsWith(ITEM_PATH)
       }),
       15000,

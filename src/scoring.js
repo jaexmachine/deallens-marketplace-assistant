@@ -16,16 +16,28 @@
     { re: /\b(?:no\s+meetup|shipping\s+only|payment\s+first)\b/i, points: 20, label: "Avoids inspection or requires payment first" },
     { re: /\b(?:sealed|brand\s+new)\b/i, points: 3, label: "High-value condition claim should be verified" }
   ];
-  const CONDITION_RULES = [
-    { re: /\b(?:broken|defective|for\s+parts|not\s+working|dead|issue|damage)\b/i, delta: -25, label: "Possible defect or parts-only item" },
-    { re: /\b(?:crack|dented|missing|repair|replacement)\b/i, delta: -14, label: "Possible repair or missing component" },
-    { re: /\b(?:good\s+condition|working|tested|no\s+issue)\b/i, delta: 8, label: "Seller claims working condition" },
-    { re: /\b(?:like\s+new|brand\s+new|unused)\b/i, delta: 10, label: "Seller claims excellent condition" }
+  const MIN_COMPARABLES = 3;
+  const CONDITION_NEGATIVE = [
+    { re: /\b(?:not\s+working|does(?:n'?t|\s+not)\s+work|won'?t\s+(?:turn\s+on|boot)|no\s+power|for\s+parts|parts\s+only|broken|defective|dead\s+unit)\b/i, delta: -30, label: "Seller describes a non-working or parts-only item" },
+    { re: /\b(?:may\s+issue|with\s+issue|has\s+(?:an?\s+)?issue|issue\s+(?:sa|with)|damaged?|crack(?:ed)?|dented|missing|needs?\s+repair|repaired|replacement)\b/i, delta: -16, label: "Possible defect, repair, or missing component" },
+    { re: /\b(?:hindi|di|ayaw)\s+(?:gumagana|mag\s*on|bumukas)|\b(?:sira|basag|may\s+lines?|needs?\s+battery)\b/i, delta: -24, label: "Possible defect described in Filipino or Taglish" }
+  ];
+  const CONDITION_POSITIVE = [
+    { re: /\b(?:no\s+issues?|without\s+issues?|fully\s+working|tested\s+and\s+working|works?\s+properly|good\s+condition)\b/i, delta: 9, label: "Seller claims working condition" },
+    { re: /\b(?:walang\s+issue|maayos|gumagana\s+nang\s+maayos)\b/i, delta: 9, label: "Seller claims working condition in Filipino or Taglish" },
+    { re: /\b(?:like\s+new|brand\s+new|unused)\b/i, delta: 11, label: "Seller claims excellent condition" }
   ];
   const STOP_WORDS = new Set(["the", "and", "with", "for", "sale", "selling", "used", "good", "condition", "like", "new", "unit", "only", "rush", "price", "negotiable", "php"]);
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+  }
+
+  function normalizeMinimumScore(value, fallback = 5.5) {
+    let score = Number(value);
+    if (!Number.isFinite(score)) score = fallback;
+    if (score > 10) score /= 10;
+    return Math.round(clamp(score, 1, 10) * 10) / 10;
   }
 
   function median(values) {
@@ -43,6 +55,30 @@
     const upper = Math.ceil(index);
     if (lower === upper) return nums[lower];
     return nums[lower] + (nums[upper] - nums[lower]) * (index - lower);
+  }
+
+  function weightedMedian(items) {
+    const rows = (items || []).filter(item => Number.isFinite(item.value) && Number(item.weight) > 0).sort((a, b) => a.value - b.value);
+    if (!rows.length) return null;
+    const total = rows.reduce((sum, item) => sum + Number(item.weight), 0);
+    let cumulative = 0;
+    for (const item of rows) {
+      cumulative += Number(item.weight);
+      if (cumulative >= total / 2) return item.value;
+    }
+    return rows[rows.length - 1].value;
+  }
+
+  function removePriceOutliers(items) {
+    if ((items || []).length < 3) return [...(items || [])];
+    const center = median(items.map(item => item.price));
+    const deviations = items.map(item => Math.abs(item.price - center));
+    const mad = median(deviations);
+    return items.filter(item => {
+      const ratioOk = item.price >= center * 0.5 && item.price <= center * 2;
+      const deviationOk = !mad || Math.abs(item.price - center) <= mad * 3;
+      return ratioOk && deviationOk;
+    });
   }
 
   function parsePrice(value) {
@@ -112,9 +148,20 @@
     return clamp(score, 0, 1);
   }
 
-  function findComparables(listing, listings, threshold = 0.28) {
+  function specsCompatible(listing, candidate) {
+    const a = listing.specs || extractSpecs(`${listing.title || ""} ${listing.text || ""}`);
+    const b = candidate.specs || extractSpecs(`${candidate.title || ""} ${candidate.text || ""}`);
+    if (a.model && b.model && String(a.model).toLowerCase() !== String(b.model).toLowerCase()) return false;
+    if (a.gpu && b.gpu && String(a.gpu).toLowerCase() !== String(b.gpu).toLowerCase()) return false;
+    if (a.cpu && b.cpu && String(a.cpu).toLowerCase() !== String(b.cpu).toLowerCase()) return false;
+    return true;
+  }
+
+  function findComparables(listing, listings, threshold = 0.4) {
     return (listings || [])
-      .filter(candidate => candidate.id !== listing.id && Number.isFinite(candidate.price) && candidate.price > 0)
+      .filter(candidate => candidate.id !== listing.id && Number.isFinite(candidate.price) && candidate.price > 1234)
+      .filter(candidate => classifyCategory(candidate.title || candidate.text) === classifyCategory(listing.title || listing.text))
+      .filter(candidate => specsCompatible(listing, candidate))
       .map(candidate => ({ ...candidate, similarity: similarity(listing, candidate) }))
       .filter(candidate => candidate.similarity >= threshold)
       .sort((a, b) => b.similarity - a.similarity)
@@ -145,13 +192,20 @@
   }
 
   function trendFor(listing, listings) {
-    const comparables = findComparables(listing, listings);
-    const prices = comparables.map(item => item.price).filter(price => price > 1234);
+    const candidates = findComparables(listing, listings);
+    const comparables = removePriceOutliers(candidates);
+    const prices = comparables.map(item => item.price);
+    const sufficient = comparables.length >= MIN_COMPARABLES;
+    const robustMedian = sufficient ? weightedMedian(comparables.map(item => ({ value: item.price, weight: Math.max(0.1, item.similarity) }))) : null;
     return {
       count: prices.length,
-      median: median(prices),
-      low: percentile(prices, 0.25),
-      high: percentile(prices, 0.75),
+      rawCount: candidates.length,
+      rejectedCount: candidates.length - comparables.length,
+      sufficient,
+      median: robustMedian,
+      low: sufficient ? percentile(prices, 0.25) : null,
+      high: sufficient ? percentile(prices, 0.75) : null,
+      quality: comparables.length >= 8 ? "high" : comparables.length >= 5 ? "medium" : sufficient ? "limited" : "insufficient",
       comparableIds: comparables.map(item => item.id)
     };
   }
@@ -189,13 +243,43 @@
     const text = `${listing.title || ""} ${listing.text || ""}`;
     let score = 55;
     const reasons = [];
-    CONDITION_RULES.forEach(rule => {
+    const negativeMatches = CONDITION_NEGATIVE.filter(rule => rule.re.test(text));
+    const positiveMatches = CONDITION_POSITIVE.filter(rule => rule.re.test(text));
+    negativeMatches.forEach(rule => {
+      score += rule.delta;
+      reasons.push(rule.label);
+    });
+    if (negativeMatches.length && positiveMatches.length) {
+      reasons.push("Condition wording is contradictory; verify the item in person");
+    } else positiveMatches.forEach(rule => {
       if (rule.re.test(text)) {
         score += rule.delta;
         reasons.push(rule.label);
       }
     });
-    return { score: clamp(score, 0, 100), reasons };
+    const finalScore = clamp(score, 0, 100);
+    const label = finalScore >= 75 ? "Excellent claim" : finalScore >= 55 ? "Usable / unknown" : finalScore >= 35 ? "Needs inspection" : "Likely repair project";
+    return {
+      score: finalScore,
+      label,
+      reasons: reasons.length ? [...new Set(reasons)] : ["Condition is not described clearly; verify it in person"],
+      contradictory: negativeMatches.length > 0 && positiveMatches.length > 0
+    };
+  }
+
+  function aiAdjustmentFor(audit) {
+    if (!audit || typeof audit !== "object") return { adjustment: 0, reasons: [], applied: false };
+    const confidence = clamp(Number(audit.confidence) || 0, 0, 1);
+    if (confidence < 0.55) return { adjustment: 0, reasons: ["AI audit confidence was too low to change the Deal Score"], applied: true };
+    const defectPenalty = (audit.defects || []).reduce((sum, defect) => sum + (Number(defect.confidence) >= 0.65 ? 4 : 2), 0);
+    const contradictionPenalty = Math.min(6, (audit.contradictions || []).length * 2);
+    const liquidity = audit.liquidityTier === "high" ? 3 : audit.liquidityTier === "low" ? -4 : 0;
+    const raw = liquidity - Math.min(14, defectPenalty) - contradictionPenalty;
+    const adjustment = Math.round(clamp(raw * (0.45 + confidence * 0.55), -18, 5));
+    const reasons = [];
+    if (adjustment < 0) reasons.push(`On-device AI audit reduced the score by ${(Math.abs(adjustment) / 10).toFixed(1)} for supported defect or contradiction signals`);
+    if (adjustment > 0) reasons.push(`On-device AI audit added ${(adjustment / 10).toFixed(1)} for strong liquidity with no larger text-supported penalty`);
+    return { adjustment, reasons, applied: true };
   }
 
   function completenessFor(listing, specs) {
@@ -223,17 +307,24 @@
     const costs = hasItemCosts
       ? (Number(listing.repairCost) || 0) + (Number(listing.transportCost) || 0) + (Number(listing.otherCost) || 0)
       : Number(settings.defaultCosts) || 0;
-    const referenceValue = Number(listing.manualReferencePrice) || trend.median || null;
+    const manualReference = Number(listing.manualReferencePrice) || null;
+    const referenceValue = manualReference || (trend.sufficient ? trend.median : null);
+    const referenceSource = manualReference ? "manual" : trend.sufficient ? "comparables" : "none";
     const expectedProfit = referenceValue && price && !placeholder.value ? Math.round(referenceValue - price - costs) : null;
     const margin = expectedProfit !== null && price > 0 ? expectedProfit / price : null;
+    const recommendedMaxBuyPrice = referenceValue && !placeholder.value
+      ? Math.max(0, Math.floor((referenceValue * 0.72 - costs) / 100) * 100)
+      : null;
+    const suggestedOffer = price > 0 && !placeholder.value
+      ? Math.max(0, Math.floor(Math.min(price * 0.9, recommendedMaxBuyPrice || price * 0.9) / 100) * 100)
+      : null;
     const reasons = [];
     const personalization = personalizationFor(listing, preferenceModel);
     const components = {
       value: null,
       condition: Math.round(condition.score),
       safety: Math.round(100 - risk.score),
-      completeness: Math.round(completeness),
-      fit: 50
+      completeness: Math.round(completeness)
     };
     let scoreStatus = "provisional";
     let confidence = Math.round(clamp(15 + completeness * 0.25 + trend.count * 6, 15, 55));
@@ -242,38 +333,38 @@
       const discount = (referenceValue - price - costs) / referenceValue;
       components.value = Math.round(clamp(50 + discount * 125, 0, 100));
       scoreStatus = "valued";
-      confidence = listing.manualReferencePrice
-        ? 88
-        : Math.round(clamp(42 + trend.count * 9, 42, 94));
-      if (discount >= 0.25) reasons.push(`Asking price is ${Math.round(discount * 100)}% below the comparable median`);
-      else if (discount < 0) reasons.push(`Asking price is ${Math.round(Math.abs(discount) * 100)}% above the comparable median`);
-      else reasons.push("Asking price is close to the current comparable range");
+      confidence = manualReference
+        ? 65
+        : Math.round(clamp(45 + trend.count * 5 + (trend.quality === "high" ? 8 : trend.quality === "medium" ? 4 : 0), 45, 93));
+      const referenceLabel = manualReference ? "your manual reference" : "the robust comparable median";
+      if (discount >= 0.25) reasons.push(`Asking price is ${Math.round(discount * 100)}% below ${referenceLabel}`);
+      else if (discount < 0) reasons.push(`Asking price is ${Math.round(Math.abs(discount) * 100)}% above ${referenceLabel}`);
+      else reasons.push(`Asking price is close to ${referenceLabel}`);
     } else {
       reasons.push("Provisional score — scan similar items to unlock price-based valuation");
     }
-    components.fit += personalization.adjustment * 1.8;
-    if (personalization.adjustment >= 3) reasons.push(`Personalized boost: similar to items you saved (+${personalization.adjustment})`);
-    if (personalization.adjustment <= -3) reasons.push(`Personalized reduction: resembles dismissed items (${personalization.adjustment})`);
+    let matchScore = 50 + personalization.adjustment * 1.8;
     const keywords = String(settings.keywords || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
     if (keywords.length) {
       const haystack = `${listing.title || ""} ${listing.text || ""}`.toLowerCase();
       if (keywords.some(keyword => haystack.includes(keyword))) {
-        components.fit += 14;
-        reasons.push("Matches your saved product interests");
+        matchScore += 14;
       }
     }
     if (Number(settings.maxPrice) > 0 && price > Number(settings.maxPrice)) {
-      components.fit -= 24;
-      reasons.push("Price exceeds your saved maximum budget");
+      matchScore -= 24;
     } else if (Number(settings.maxPrice) > 0 && price > 0 && price <= Number(settings.maxPrice)) {
-      components.fit += 6;
+      matchScore += 6;
     }
-    components.fit = Math.round(clamp(components.fit, 0, 100));
+    matchScore = Math.round(clamp(matchScore, 0, 100));
 
     const weights = components.value === null
-      ? { condition: 0.25, safety: 0.30, completeness: 0.20, fit: 0.25 }
-      : { value: 0.50, condition: 0.14, safety: 0.14, completeness: 0.08, fit: 0.14 };
+      ? { condition: 0.30, safety: 0.40, completeness: 0.30 }
+      : { value: 0.58, condition: 0.16, safety: 0.16, completeness: 0.10 };
     let dealScore = Object.entries(weights).reduce((sum, [key, weight]) => sum + components[key] * weight, 0);
+    const ai = aiAdjustmentFor(listing.localAiAudit);
+    dealScore += ai.adjustment;
+    ai.reasons.forEach(reason => reasons.push(reason));
     if (components.value === null) dealScore = Math.min(dealScore, 69);
     if (placeholder.value) {
       dealScore = Math.min(dealScore, 49);
@@ -285,7 +376,7 @@
     risk.reasons.slice(0, 2).forEach(reason => reasons.push(reason));
 
     return {
-      score: Math.round(clamp(dealScore, 0, 100)),
+      score: Math.round(clamp(dealScore, 10, 100)) / 10,
       scoreStatus,
       confidence,
       components,
@@ -294,13 +385,21 @@
       placeholder,
       trend,
       referenceValue,
+      referenceSource,
       costs,
       expectedProfit,
       margin,
+      fairPrice: referenceValue,
+      recommendedMaxBuyPrice,
+      suggestedOffer,
+      scoreEngine: ai.applied ? "hybrid-ai" : "local",
+      aiAdjustment: Math.round(ai.adjustment) / 10,
       reasons: [...new Set(reasons)].slice(0, 5),
       category: classifyCategory(`${listing.title || ""} ${listing.text || ""}`),
       specs,
-      personalization
+      personalization,
+      matchScore: Math.round(matchScore) / 10,
+      confidenceLabel: confidence >= 80 ? "high" : confidence >= 60 ? "medium" : confidence >= 40 ? "limited" : "low"
     };
   }
 
@@ -311,7 +410,7 @@
     return [...new Set(tokens)].slice(0, 7).join(" ");
   }
 
-  const api = { parsePrice, extractSpecs, classifyCategory, similarity, findComparables, trendFor, isPlaceholderPrice, analyzeRisk, analyzeCondition, completenessFor, scoreListing, buildSearchQuery, preferenceSignals, personalizationFor, median, percentile };
+  const api = { MIN_COMPARABLES, parsePrice, normalizeMinimumScore, extractSpecs, classifyCategory, similarity, specsCompatible, findComparables, trendFor, removePriceOutliers, weightedMedian, isPlaceholderPrice, analyzeRisk, analyzeCondition, aiAdjustmentFor, completenessFor, scoreListing, buildSearchQuery, preferenceSignals, personalizationFor, median, percentile };
   root.DealLens = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

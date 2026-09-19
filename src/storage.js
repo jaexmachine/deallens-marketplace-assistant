@@ -2,6 +2,7 @@
   "use strict";
 
   const MAX_LISTINGS = 350;
+  const SCHEMA_VERSION = 2;
 
   function text(value, limit) {
     return String(value || "").slice(0, limit);
@@ -116,7 +117,70 @@
     return { value, changed };
   }
 
-  const api = { MAX_LISTINGS, sanitizeListing, sanitizeAudit, pruneListings, listingMap, isQuotaError, persist, mergeCurrentScan };
+  function mergeTabScan(scans, next) {
+    const values = { ...(scans || {}) };
+    if (!next?.tabId) return { value: values, scan: null, changed: false };
+    const key = String(next.tabId);
+    const merged = mergeCurrentScan(values[key], next);
+    values[key] = merged.value;
+    return { value: values, scan: merged.value, changed: merged.changed };
+  }
+
+  function scanForTab(scans, tabId, legacyScan = null) {
+    if (!tabId) return null;
+    return scans?.[String(tabId)] || (legacyScan?.tabId === tabId ? legacyScan : null);
+  }
+
+  function statusForTab(statuses, tabId) {
+    if (!tabId) return null;
+    return statuses?.[String(tabId)] || null;
+  }
+
+  function mergeTabStatus(statuses, status) {
+    const values = { ...(statuses || {}) };
+    if (!status?.tabId) return values;
+    values[String(status.tabId)] = {
+      tabId: status.tabId,
+      pageKey: text(status.pageKey, 700),
+      found: Math.max(0, Number(status.found) || 0),
+      newCount: Math.max(0, Number(status.newCount) || 0),
+      scannedAt: text(status.scannedAt, 40)
+    };
+    return values;
+  }
+
+  function migrateStoredData(stored = {}) {
+    const scans = { ...(stored.dealLensCurrentScans || {}) };
+    if (stored.dealLensCurrentScan?.tabId && !scans[String(stored.dealLensCurrentScan.tabId)]) {
+      scans[String(stored.dealLensCurrentScan.tabId)] = stored.dealLensCurrentScan;
+    }
+    return {
+      dealLensSchemaVersion: SCHEMA_VERSION,
+      dealLensCurrentScans: scans,
+      dealLensScanStatuses: { ...(stored.dealLensScanStatuses || {}) },
+      dealLensFeedback: { ...(stored.dealLensFeedback || {}) }
+    };
+  }
+
+  function applyPreferenceFeedback(feedbackMap, preferenceModel, listingId, signals, direction) {
+    const feedback = { ...(feedbackMap || {}) };
+    const weights = { ...(preferenceModel?.weights || {}) };
+    const previous = feedback[listingId] || { direction: 0, signals: [] };
+    const adjust = (values, amount) => (values || []).forEach(signal => {
+      const strength = String(signal).startsWith("category:") ? 1.2 : 0.45;
+      weights[signal] = Math.max(-5, Math.min(5, (Number(weights[signal]) || 0) + amount * strength));
+      if (Math.abs(weights[signal]) < 0.0001) delete weights[signal];
+    });
+    adjust(previous.signals, -Number(previous.direction || 0));
+    if (direction) {
+      const uniqueSignals = [...new Set(signals || [])];
+      adjust(uniqueSignals, Number(direction));
+      feedback[listingId] = { direction: Number(direction), signals: uniqueSignals };
+    } else delete feedback[listingId];
+    return { feedback, preferenceModel: { weights, feedbackCount: Object.keys(feedback).length } };
+  }
+
+  const api = { MAX_LISTINGS, SCHEMA_VERSION, sanitizeListing, sanitizeAudit, pruneListings, listingMap, isQuotaError, persist, mergeCurrentScan, mergeTabScan, scanForTab, statusForTab, mergeTabStatus, migrateStoredData, applyPreferenceFeedback };
   root.DealLensStorage = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
