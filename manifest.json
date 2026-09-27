@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Deal Breaker – Facebook Marketplace Deal Finder",
   "short_name": "Deal Breaker",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Analyze visible Facebook Marketplace listings for price trends, realistic margins, condition, and risk signals.",
   "minimum_chrome_version": "114",
   "permissions": ["activeTab", "storage", "sidePanel", "tabs", "scripting"],
@@ -38,7 +38,7 @@
         "https://facebook.com/marketplace/*",
         "https://*.facebook.com/marketplace/*"
       ],
-      "js": ["src/scoring.js", "src/scan-coordinator.js", "src/content.js"],
+      "js": ["src/scoring.js", "src/description-extractor.js", "src/scan-coordinator.js", "src/content.js"],
       "css": ["styles/content.css"],
       "run_at": "document_idle"
     }

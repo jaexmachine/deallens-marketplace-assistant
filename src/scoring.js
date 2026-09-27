@@ -289,7 +289,7 @@
   }
 
   function extractDescriptionPrices(listing) {
-    const text = String(listing.text || "");
+    const text = String(listing.description || listing.text || "");
     const displayed = Number(listing.price) || 0;
     const values = [];
     const pattern = /(?:₱|PHP\s*|\bP\s*)(\d{1,3}(?:,\d{3})+|\d{3,6})(?:\.\d+)?|\b(\d+(?:\.\d+)?)\s*k\b/gi;

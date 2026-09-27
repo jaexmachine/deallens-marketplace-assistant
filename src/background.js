@@ -63,6 +63,12 @@ async function mergeListings(incoming, currentScan = null) {
   incoming.map(DealLensStorage.sanitizeListing).filter(item => item && !dismissed.has(item.id)).forEach(item => {
     const existing = listings[item.id] || {};
     if (!listings[item.id]) newCount += 1;
+    if (existing.descriptionComplete && !item.descriptionComplete) {
+      item.description = existing.description;
+      item.text = existing.text;
+      item.descriptionSource = existing.descriptionSource;
+      item.descriptionComplete = true;
+    }
     listings[item.id] = { ...existing, ...item, firstSeenAt: existing.firstSeenAt || item.capturedAt, lastSeenAt: item.capturedAt };
   });
 

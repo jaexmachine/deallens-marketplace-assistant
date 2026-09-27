@@ -2,7 +2,7 @@
 
 Deal Breaker is a Chrome extension that analyzes Facebook Marketplace electronics listings visible or loaded in your browser. It estimates realistic flip margins from locally scanned comparable asking prices, highlights misleading prices and defects, and prepares seller questions. It uses your existing Facebook session and never sends messages or buys items automatically.
 
-Version 0.7 adds price-bait detection, fatal hardware/ownership flags, Taglish repair-downplaying detection, repair-cost ranges, projected net margin and ROI, separate Deal/Match/Risk/Freshness ratings, laptop CPU checks, iPhone battery sanity checks, and digicam package notes. An optional BYOK photo audit marks every visual result as possible until the user confirms it.
+Version 0.7.1 adds full-description capture when a listing is opened, including automatic expansion of the description during a manual scan. Full descriptions replace short card previews and drive real-price, defect, specification, and scam analysis. Version 0.7 also added price-bait detection, repair-cost ranges, category checks, and optional confirmed BYOK photo auditing.
 
 ## Feature coverage
 
@@ -16,7 +16,7 @@ Version 0.7 adds price-bait detection, fatal hardware/ownership flags, Taglish r
 
 ## Install
 
-1. Extract `Deal-Breaker-0.7.zip` to a permanent folder.
+1. Extract `Deal-Breaker-0.7.1.zip` to a permanent folder.
 2. Open `chrome://extensions` in Chrome.
 3. Enable **Developer mode**.
 4. Click **Load unpacked**.

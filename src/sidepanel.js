@@ -240,6 +240,7 @@
       <div class="metric-row"><div><strong>${money(a.referenceValue)}</strong><span>${a.referenceSource === "manual" ? "Manual reference" : "Comparable reference"}</span></div><div><strong>${money(a.priceBait.effectivePrice)}</strong><span>Effective buy price</span></div><div><strong>${money(a.repairReserve)}</strong><span>${a.repairReserveSource === "manual" ? "Manual repair" : "Suggested repair reserve"}</span></div><div><strong>${money(a.expectedProfit)}</strong><span>Projected net</span></div><div><strong>${a.roi === null ? "—" : `${a.roi.toFixed(1)}%`}</strong><span>Projected ROI</span></div></div>
       <div class="detail-section"><h4>Deal Score components · 1–10</h4><div class="component-grid">${Object.entries(a.components).map(([name, value]) => `<div><span>${escapeHtml(name)}</span><strong>${value === null ? "—" : componentRating(value)}</strong></div>`).join("")}</div><p class="fine-print">Personal interests are shown as a separate Match Score and never inflate financial deal quality. A provisional score excludes market value and cannot be labeled a Good Deal.</p></div>
       <div class="detail-section"><h4>Why this score</h4><ul>${a.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join("")}</ul></div>
+      <div class="detail-section"><h4>Seller description <span class="${item.descriptionComplete ? "local-pill" : "cloud-pill"}">${item.descriptionComplete ? "Full detail" : "Card preview"}</span></h4><p>${escapeHtml(item.description || item.text || "No description captured yet.")}</p>${item.descriptionComplete ? "" : '<p class="fine-print">Open this listing, wait for its description to load, then click Scan again to capture the complete text and stated price.</p>'}</div>
       <div class="detail-section"><h4>Condition · ${componentRating(a.condition.score)}/10</h4><p><strong>${escapeHtml(a.condition.label)}</strong></p><ul>${a.condition.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join("")}</ul></div>
       <div class="detail-section"><h4>Scam and red-flag check · ${componentRating(a.risk.score)}/10 risk</h4>${a.risk.reasons.length ? `<ul>${a.risk.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>` : "<p>No explicit text-based red flags detected. Still verify ownership and inspect before paying.</p>"}</div>
       <div class="detail-section"><h4>Detected specifications</h4><div class="flag-row">${specs}</div></div>
@@ -471,7 +472,7 @@
 
     setScanStatus("scanning", "Connecting Deal Breaker to this Marketplace tab…");
     await chrome.scripting.insertCSS({ target: { tabId }, files: ["styles/content.css"] }).catch(() => {});
-    await chrome.scripting.executeScript({ target: { tabId }, files: ["src/scoring.js", "src/scan-coordinator.js", "src/content.js"] });
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["src/scoring.js", "src/description-extractor.js", "src/scan-coordinator.js", "src/content.js"] });
   }
 
   async function scanActiveTab() {

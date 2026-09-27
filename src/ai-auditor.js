@@ -43,7 +43,7 @@
     const payload = {
       title: compactText(listing.title, 240),
       displayedPricePhp: Number(listing.price) || null,
-      description: compactText(listing.text),
+      description: compactText(listing.description || listing.text),
       category: compactText(listing.category, 80),
       ruleDetectedSpecs: listing.specs || {}
     };

@@ -7,6 +7,7 @@
   let debounceTimer = null;
   let observer = null;
   let disposed = false;
+  let lastDetailFingerprint = "";
 
   function stopScanner() {
     disposed = true;
@@ -75,6 +76,9 @@
       url: url.href,
       title: cleanText(title).slice(0, 180),
       text: text.slice(0, 1800),
+      description: "",
+      descriptionSource: "card-preview",
+      descriptionComplete: false,
       price: price.value,
       priceLabel: cleanText(price.label),
       image: image?.src || "",
@@ -82,6 +86,49 @@
       capturedAt: new Date().toISOString(),
       specs: DealLens.extractSpecs(text),
       category: DealLens.classifyCategory(text)
+    };
+  }
+
+  function detailTitle() {
+    const heading = [...document.querySelectorAll('h1, [role="main"] h2')]
+      .map(node => cleanText(node.textContent))
+      .find(value => value.length > 2 && value.length <= 180 && !/^Marketplace$/i.test(value));
+    const meta = cleanText(document.querySelector('meta[property="og:title"]')?.content || "").replace(/\s*\|\s*Facebook.*$/i, "");
+    return heading || meta || "Marketplace listing";
+  }
+
+  function detailPrice() {
+    const main = document.querySelector('div[role="main"], main');
+    const candidates = [...(main?.querySelectorAll("span, div") || [])]
+      .map(node => cleanText(node.textContent))
+      .filter(value => value.length <= 40 && /^(?:₱|PHP\s*)\s*[\d,.]+(?:\s*[kKmM])?$/.test(value));
+    return extractPrice(candidates[0] || cleanText(main?.innerText || ""));
+  }
+
+  function extractDetailListing() {
+    const match = location.pathname.match(/\/marketplace\/item\/(\d+)/);
+    if (!match) return null;
+    const description = DealBreakerDescription.extract(document);
+    const title = detailTitle();
+    const price = detailPrice();
+    const fallbackText = cleanText(document.querySelector('meta[property="og:description"]')?.content || "");
+    const text = description || fallbackText || title;
+    const image = document.querySelector('meta[property="og:image"]')?.content || document.querySelector('div[role="main"] img')?.src || "";
+    return {
+      id: match[1],
+      url: `${location.origin}${location.pathname}`,
+      title: title.slice(0, 180),
+      text: text.slice(0, 6000),
+      description: description.slice(0, 6000),
+      descriptionSource: description ? "full-detail" : "detail-fallback",
+      descriptionComplete: Boolean(description),
+      price: price.value,
+      priceLabel: cleanText(price.label),
+      image,
+      location: "",
+      capturedAt: new Date().toISOString(),
+      specs: DealLens.extractSpecs(`${title} ${text}`),
+      category: DealLens.classifyCategory(`${title} ${text}`)
     };
   }
 
@@ -114,6 +161,10 @@
 
   async function performScan(force = false) {
     if (disposed) throw new Error("DealLens was updated. Refresh this Marketplace tab.");
+    const isDetailPage = location.pathname.startsWith(ITEM_PATH);
+    if (force && isDetailPage && DealBreakerDescription.expand(document)) {
+      await new Promise(resolve => setTimeout(resolve, 350));
+    }
     const allAnchors = [...document.querySelectorAll(`a[href*="${ITEM_PATH}"]`)];
     const unique = new Map();
     allAnchors.forEach(anchor => {
@@ -122,14 +173,22 @@
     });
     const anchors = [...unique.values()];
     const pageListings = anchors.map(extractListing).filter(Boolean);
+    const detailListing = isDetailPage ? extractDetailListing() : null;
+    if (detailListing) {
+      const existingIndex = pageListings.findIndex(item => item.id === detailListing.id);
+      if (existingIndex >= 0) pageListings[existingIndex] = { ...pageListings[existingIndex], ...detailListing };
+      else pageListings.unshift(detailListing);
+    }
     if (!force && !pageListings.length) {
       return { found: 0, analyzed: 0, totalAnchors: anchors.length, ignoredEmpty: true, newCount: 0, saved: 0 };
     }
-    const extracted = pageListings.filter(listing => force || !seen.has(listing.id));
+    const detailFingerprint = detailListing ? `${detailListing.id}:${detailListing.description.length}:${detailListing.price || 0}` : "";
+    const extracted = pageListings.filter(listing => force || !seen.has(listing.id) || (listing.id === detailListing?.id && detailFingerprint !== lastDetailFingerprint));
+    if (detailFingerprint) lastDetailFingerprint = detailFingerprint;
     extracted.forEach(listing => {
       seen.add(listing.id);
       const anchor = unique.get(String(listing.id));
-      applyBadge(listingContainer(anchor), listing, { pending: true });
+      if (anchor) applyBadge(listingContainer(anchor), listing, { pending: true });
     });
     const saved = await DealLensScan.withTimeout(
       runtimeMessage({
