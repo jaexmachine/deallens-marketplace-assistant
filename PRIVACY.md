@@ -1,15 +1,17 @@
-# DealLens privacy notes
+# Deal Breaker privacy notes
 
-DealLens operates locally in Chrome. It stores sanitized listing summaries, settings, per-tab scan state, preference feedback, and watchlist identifiers in `chrome.storage.local` on the user's device. Local listing history is bounded, derived score/comparable objects are not persisted, embedded image data is discarded, and saved data is migrated through a versioned schema to stay reliable across updates.
+Deal Breaker stores sanitized listing summaries, settings, per-tab scan state, preference feedback, watchlist identifiers, and confirmed audit findings in `chrome.storage.local`. Listing history is bounded; derived comparable objects, API keys, and image bytes are not persisted.
 
-It does not:
+Deal Breaker does not collect Facebook passwords, cookies, or authentication tokens; automatically send messages; purchase products; or analyze protected personal characteristics. It is not affiliated with Facebook or Meta.
 
-- collect Facebook passwords, cookies, or authentication tokens;
-- transmit listing or seller information to a developer-controlled server;
-- call a paid or cloud AI API;
-- automatically send messages or purchase products;
-- analyze protected personal characteristics.
+The extension requests access to Facebook Marketplace pages to identify visible listing cards. The optional cloud image-audit host permission is requested only after the user clicks **Audit visuals**. Users can decline it and keep every local feature.
 
-The extension requests access only to Facebook Marketplace pages so it can identify visible listing cards. Users can clear stored listing history from the Settings tab or remove all extension data by uninstalling the extension.
+## Local text AI
 
-On supported Chrome installations, users may manually run the optional built-in AI text auditor for one listing or the current batch. The model runs on the device. DealLens supplies only the listing title, displayed price, description, category, and rule-detected specifications; it excludes seller identity and image URLs. Normalized audit results are stored in `chrome.storage.local`. AI output can apply a visible, bounded adjustment to the Deal Score, but cannot alter repair costs, market comparables, manual values, or placeholder-price safeguards.
+On supported Chrome installations, the optional built-in AI text audit runs on-device. It receives only listing title, displayed price, description, category, and rule-detected specifications. Normalized results can make a bounded, visible score adjustment.
+
+## Optional BYOK visual AI
+
+When the user explicitly selects photos and starts a visual audit, those selected images and limited listing context are sent directly from the extension to Google Gemini using the user's API key. The key is held only in `chrome.storage.session` and is forgotten when the Chrome session ends. Deal Breaker does not save image bytes. Returned findings are labelled possible and do not change repair costs or scores until the user explicitly confirms them.
+
+Users can forget the session key from the audit panel, clear saved listings in Settings, revoke the optional host permission in Chrome, or remove all extension data by uninstalling the extension.

@@ -1,20 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "DealLens – Marketplace Deal Assistant",
-  "short_name": "DealLens",
-  "version": "0.6.0",
-  "description": "Locally analyze visible Marketplace listings for price trends, flip potential, and risk signals.",
+  "name": "Deal Breaker – Facebook Marketplace Deal Finder",
+  "short_name": "Deal Breaker",
+  "version": "0.7.0",
+  "description": "Analyze visible Facebook Marketplace listings for price trends, realistic margins, condition, and risk signals.",
   "minimum_chrome_version": "114",
   "permissions": ["activeTab", "storage", "sidePanel", "tabs", "scripting"],
   "host_permissions": [
     "https://facebook.com/marketplace/*",
     "https://*.facebook.com/marketplace/*"
   ],
+  "optional_host_permissions": ["https://generativelanguage.googleapis.com/*"],
   "background": {
     "service_worker": "src/background.js"
   },
   "action": {
-    "default_title": "Open DealLens",
+    "default_title": "Open Deal Breaker",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",

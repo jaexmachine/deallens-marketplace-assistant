@@ -96,8 +96,8 @@
     badge.dataset.id = listing.id;
     badge.type = "button";
     badge.textContent = pending ? "…" : scoreData.placeholder.value ? "Price?" : scoreData.scoreStatus === "provisional" ? `~${Number(scoreData.score).toFixed(1)}` : Number(scoreData.score).toFixed(1);
-    badge.title = pending ? "DealLens is calculating this score" : `${scoreData.scoreStatus === "provisional" ? "Provisional score" : "Deal score"} · Click for details · ${scoreData.reasons.join(" • ")}`;
-    badge.setAttribute("aria-label", `Open DealLens details for ${listing.title}`);
+    badge.title = pending ? "Deal Breaker is calculating this score" : `${scoreData.scoreStatus === "provisional" ? "Provisional score" : "Deal score"} · Click for details · ${scoreData.reasons.join(" • ")}`;
+    badge.setAttribute("aria-label", `Open Deal Breaker details for ${listing.title}`);
     if (!badge.dataset.bound) {
       badge.dataset.bound = "true";
       badge.addEventListener("click", event => {
@@ -161,7 +161,7 @@
     if (document.querySelector("#deallens-scan-control") || !document.body) return;
     const control = document.createElement("div");
     control.id = "deallens-scan-control";
-    control.innerHTML = '<button type="button"><span>◎</span> Scan with DealLens</button><small>Ready</small>';
+    control.innerHTML = '<button type="button"><span>◎</span> Scan with Deal Breaker</button><small>Ready</small>';
     const button = control.querySelector("button");
     const status = control.querySelector("small");
     button.addEventListener("click", async () => {

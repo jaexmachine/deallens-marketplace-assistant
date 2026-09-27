@@ -17,6 +17,26 @@
     { re: /\b(?:sealed|brand\s+new)\b/i, points: 3, label: "High-value condition claim should be verified" }
   ];
   const MIN_COMPARABLES = 3;
+  const REPAIR_COST_RANGES = {
+    battery: { label: "Laptop battery", low: 1200, high: 1800, suggested: 1400 },
+    keyboard: { label: "Keyboard / top case", low: 1200, high: 2200, suggested: 1500 },
+    display: { label: "Laptop display panel", low: 2500, high: 4500, suggested: 3000 },
+    hinge: { label: "Hinge / shell repair", low: 1800, high: 3200, suggested: 2200 },
+    iphoneCamera: { label: "iPhone camera module", low: 3200, high: 4500, suggested: 3800 },
+    iphoneScreen: { label: "iPhone screen", low: 2200, high: 4500, suggested: 2500 },
+    laptopCharger: { label: "Laptop charger", low: 600, high: 1200, suggested: 800 },
+    digicamPower: { label: "Digicam battery / charger", low: 400, high: 900, suggested: 600 }
+  };
+  const FATAL_DEFECT_RULES = [
+    { re: /\b(code\s*43|error\s*43)\b/i, label: "GPU or device Code 43 is disclosed" },
+    { re: /\b(driver\s*issue\s*(?:sa\s*)?(?:gpu|graphics)|di\s*ma-?detect\s*(?:ang\s*)?(?:dedicated|gpu))\b/i, label: "Dedicated graphics may not be detected" },
+    { re: /\b(nakalimutan\s*(?:ang\s*)?(?:apple\s*id|icloud)|need\s*(?:ipa-?)?bypass|icloud\s*(?:lock|issue|pass)|activation\s*lock|locked\s*to\s*owner|hello\s*screen)\b/i, label: "Activation or ownership lock is disclosed" },
+    { re: /\b(no\s+power|dead\s+board|motherboard\s+(?:issue|dead)|board\s+issue)\b/i, label: "Possible board-level or no-power failure" }
+  ];
+  const EVASION_RULES = [
+    /\bkayo\s+na\s+magpaayos\b/i, /\bpapaayos\s+lang\b/i, /\bsimpleng\s+repair\s+lang\b/i,
+    /\bminsan\s+lang\s+naman\b/i, /\bfor\s+tech(?:nician)?\s+only\b/i, /\bbawal\s+sa\s+maarte\b/i
+  ];
   const CONDITION_NEGATIVE = [
     { re: /\b(?:not\s+working|does(?:n'?t|\s+not)\s+work|won'?t\s+(?:turn\s+on|boot)|no\s+power|for\s+parts|parts\s+only|broken|defective|dead\s+unit)\b/i, delta: -30, label: "Seller describes a non-working or parts-only item" },
     { re: /\b(?:may\s+issue|with\s+issue|has\s+(?:an?\s+)?issue|issue\s+(?:sa|with)|damaged?|crack(?:ed)?|dented|missing|needs?\s+repair|repaired|replacement)\b/i, delta: -16, label: "Possible defect, repair, or missing component" },
@@ -95,7 +115,8 @@
   function extractSpecs(textValue) {
     const text = String(textValue || "");
     const specs = {};
-    const ram = text.match(/\b(4|6|8|12|16|24|32|48|64|128)\s*GB\s*(?:RAM|memory)?\b/i);
+    const ram = text.match(/\b(4|6|8|12|16|24|32|48|64|128)\s*GB\s*(?:RAM|memory)\b/i)
+      || text.match(/\b(?:RAM|memory)\s*[:\-]?\s*(4|6|8|12|16|24|32|48|64|128)\s*GB\b/i);
     const storage = text.match(/\b(64|128|240|250|256|480|500|512|1000|1024|2000|2048)\s*(GB|TB)\s*(SSD|HDD|storage)?\b/i);
     const intel = text.match(/\b(?:intel\s+)?(i[3579][\s-]?\d{3,5}[a-z]{0,2}\d?)\b/i);
     const ryzen = text.match(/\b(?:AMD\s+)?(Ryzen\s*[3579]\s*\d{4}[a-z]{0,2})\b/i);
@@ -267,6 +288,103 @@
     };
   }
 
+  function extractDescriptionPrices(listing) {
+    const text = String(listing.text || "");
+    const displayed = Number(listing.price) || 0;
+    const values = [];
+    const pattern = /(?:₱|PHP\s*|\bP\s*)(\d{1,3}(?:,\d{3})+|\d{3,6})(?:\.\d+)?|\b(\d+(?:\.\d+)?)\s*k\b/gi;
+    let match;
+    while ((match = pattern.exec(text))) {
+      const value = match[2] ? Number(match[2]) * 1000 : Number(String(match[1]).replace(/,/g, ""));
+      if (Number.isFinite(value) && value >= 500 && value <= 5000000) values.push(Math.round(value));
+    }
+    return [...new Set(values)].filter(value => value !== displayed);
+  }
+
+  function priceBaitFor(listing) {
+    const displayedPrice = Number(listing.price) || 0;
+    const descriptionPrices = extractDescriptionPrices(listing);
+    const higher = descriptionPrices.filter(value => value > displayedPrice * 1.05).sort((a, b) => b - a)[0] || null;
+    return {
+      detected: Boolean(displayedPrice && higher),
+      displayedPrice,
+      descriptionPrice: higher,
+      effectivePrice: higher || displayedPrice,
+      evidence: higher ? `Description mentions ₱${higher.toLocaleString("en-PH")}, above the displayed price` : ""
+    };
+  }
+
+  function repairSignalsFor(listing) {
+    const text = `${listing.title || ""} ${listing.text || ""}`;
+    const definitions = [
+      ["battery", /\b(needs?\s+(?:a\s+)?battery|dead\s+battery|battery\s+(?:dead|issue)|plug\s+and\s+play)\b/i],
+      ["keyboard", /\b(?:ghost\s*typing|phantom\s+keys?|dead\s+keys?|some\s+keys?\s+(?:not\s+working|ayaw)|keyboard\s+issue)\b/i],
+      ["display", /\b(?:may\s+lines?\s*(?:sa\s*)?(?:screen|lcd)?|screen\s+lines?|cracked\s+(?:screen|lcd)|flickering\s+(?:display|screen)|white\s+spots?)\b/i],
+      ["hinge", /\b(?:broken\s+hinge|hinge\s+(?:issue|broken)|bako\s+ang\s+casing)\b/i],
+      ["iphoneCamera", /\b(?:camera\s+(?:issue|broken)|ois\s+rattle|0\.5x\s+(?:dead|not\s+working))\b/i],
+      ["iphoneScreen", /\b(?:iphone\s+)?(?:third[- ]party|replacement|broken)\s+(?:screen|lcd|display)\b/i],
+      ["laptopCharger", /\b(?:no|missing|without)\s+(?:original\s+)?charger\b/i],
+      ["digicamPower", /\b(?:camera|digicam).{0,30}(?:no|missing|without)\s+(?:battery|charger)\b/i]
+    ];
+    return definitions.filter(([, re]) => re.test(text)).map(([category, re]) => {
+      const range = REPAIR_COST_RANGES[category];
+      return { category, ...range, evidence: text.match(re)?.[0] || range.label };
+    });
+  }
+
+  function fatalFlagsFor(listing) {
+    const text = `${listing.title || ""} ${listing.text || ""}`;
+    return FATAL_DEFECT_RULES.filter(rule => rule.re.test(text)).map(rule => rule.label);
+  }
+
+  function categoryAuditFor(listing, specs) {
+    const text = `${listing.title || ""} ${listing.text || ""}`;
+    const notes = [];
+    let penalty = 0;
+    if (/\b(?:ubuntu|linux|chrome\s*os|cloudready|mrchromebox)\b/i.test(text)) notes.push("Non-standard OS disclosed; verify Windows/macOS licensing and buyer demand");
+    const cpu = String(specs.cpu || "").toUpperCase();
+    const intel = cpu.match(/I[3579]-?(\d{4,5})/);
+    if (intel) {
+      const digits = intel[1];
+      const generation = digits.length === 5 ? Number(digits.slice(0, 2)) : Number(digits[0]);
+      if (generation > 0 && generation < 8) { notes.push(`Legacy Intel ${generation}th-generation platform; verify resale demand`); penalty -= 10; }
+      else if (generation >= 8) notes.push(`Intel ${generation}th-generation platform meets the basic productivity floor`);
+    }
+    const ryzen = cpu.match(/RYZEN\s*[3579]\s*(\d{4})/);
+    if (ryzen && Number(ryzen[1]) < 3000) { notes.push("Pre-Ryzen-3000 platform; verify performance and demand"); penalty -= 8; }
+    const iphone = text.match(/\biPhone\s+(11|12|13|14|15|16|17)\b/i);
+    const bh = text.match(/\b(?:battery\s*health|BH)\s*[:\-]?\s*(\d{2,3})\s*%/i)
+      || text.match(/\b(\d{2,3})\s*%\s*(?:battery\s*health|BH)\b/i);
+    const modelYears = { 11: 2019, 12: 2020, 13: 2021, 14: 2022, 15: 2023, 16: 2024, 17: 2025 };
+    if (iphone && bh && 2026 - modelYears[iphone[1]] > 4 && Number(bh[1]) >= 95) notes.push("Unusually high battery health for this model age; verify replacement history and battery authenticity");
+    if (/\b(?:digicam|digital\s+camera|powershot|cyber-?shot|coolpix|exilim)\b/i.test(text)) {
+      const packageItems = [/[\b\s](?:original\s+)?charger\b/i.test(` ${text}`) && "charger", /\bworking\s+battery\b/i.test(text) && "battery", /\bSD\s*card\b/i.test(text) && "SD card"].filter(Boolean);
+      if (packageItems.length) notes.push(`Digicam package mentions ${packageItems.join(", ")}; verify each item at meetup`);
+      if (/\b(?:pink|baby\s+blue|lilac|white)\b/i.test(text)) notes.push("Potential colorway premium is advisory only until supported by comparable prices");
+    }
+    return { notes, penalty };
+  }
+
+  function freshnessFor(listing) {
+    const text = `${listing.title || ""} ${listing.text || ""}`;
+    let hours = null;
+    let match = text.match(/\b(?:listed\s+)?(\d+)\s*(minute|hour|day|week|month)s?\s+ago\b/i);
+    if (match) {
+      const multipliers = { minute: 1 / 60, hour: 1, day: 24, week: 168, month: 720 };
+      hours = Number(match[1]) * multipliers[match[2].toLowerCase()];
+    } else if (/\b(?:just\s+now|today)\b/i.test(text)) hours = 12;
+    let score = 5;
+    let label = "Age unknown";
+    if (hours !== null) {
+      if (hours <= 24) { score = 10; label = "Fresh lead"; }
+      else if (hours <= 72) { score = 8; label = "Active listing"; }
+      else if (hours < 24 * 14) { score = 5; label = "Established listing"; }
+      else if (hours < 24 * 30) { score = 3; label = "Stale listing"; }
+      else { score = 1; label = "Very old listing"; }
+    }
+    return { score, label, hours };
+  }
+
   function aiAdjustmentFor(audit) {
     if (!audit || typeof audit !== "object") return { adjustment: 0, reasons: [], applied: false };
     const confidence = clamp(Number(audit.confidence) || 0, 0, 1);
@@ -302,16 +420,27 @@
     const condition = analyzeCondition(listing);
     const specs = extractSpecs(`${listing.title || ""} ${listing.text || ""}`);
     const completeness = completenessFor(listing, specs);
-    const price = Number(listing.price) || 0;
+    const priceBait = priceBaitFor(listing);
+    const price = priceBait.effectivePrice;
+    const fatalFlags = fatalFlagsFor(listing);
+    const evasionDetected = EVASION_RULES.some(rule => rule.test(`${listing.title || ""} ${listing.text || ""}`));
+    const repairSignals = repairSignalsFor(listing);
+    const confirmedVisual = (listing.visualAudit?.possibleDefects || []).filter(defect => defect.confirmed === true);
+    const suggestedRepairReserve = repairSignals.reduce((sum, item) => sum + item.suggested, 0)
+      + confirmedVisual.reduce((sum, item) => sum + Math.max(0, Number(item.suggestedCost) || 0), 0);
     const hasItemCosts = [listing.repairCost, listing.transportCost, listing.otherCost].some(value => Number(value) > 0);
-    const costs = hasItemCosts
-      ? (Number(listing.repairCost) || 0) + (Number(listing.transportCost) || 0) + (Number(listing.otherCost) || 0)
+    const manualRepairCost = Number(listing.repairCost) || 0;
+    const repairReserve = manualRepairCost || suggestedRepairReserve;
+    const prepCosts = hasItemCosts
+      ? (Number(listing.transportCost) || 0) + (Number(listing.otherCost) || 0)
       : Number(settings.defaultCosts) || 0;
+    const costs = repairReserve + prepCosts;
     const manualReference = Number(listing.manualReferencePrice) || null;
     const referenceValue = manualReference || (trend.sufficient ? trend.median : null);
     const referenceSource = manualReference ? "manual" : trend.sufficient ? "comparables" : "none";
     const expectedProfit = referenceValue && price && !placeholder.value ? Math.round(referenceValue - price - costs) : null;
-    const margin = expectedProfit !== null && price > 0 ? expectedProfit / price : null;
+    const totalInvestment = price + costs;
+    const margin = expectedProfit !== null && totalInvestment > 0 ? expectedProfit / totalInvestment : null;
     const recommendedMaxBuyPrice = referenceValue && !placeholder.value
       ? Math.max(0, Math.floor((referenceValue * 0.72 - costs) / 100) * 100)
       : null;
@@ -362,6 +491,8 @@
       ? { condition: 0.30, safety: 0.40, completeness: 0.30 }
       : { value: 0.58, condition: 0.16, safety: 0.16, completeness: 0.10 };
     let dealScore = Object.entries(weights).reduce((sum, [key, weight]) => sum + components[key] * weight, 0);
+    const categoryAudit = categoryAuditFor(listing, specs);
+    dealScore += categoryAudit.penalty;
     const ai = aiAdjustmentFor(listing.localAiAudit);
     dealScore += ai.adjustment;
     ai.reasons.forEach(reason => reasons.push(reason));
@@ -372,8 +503,32 @@
       confidence = Math.min(confidence, 30);
       reasons.unshift("Price is unverified and may be a placeholder");
     }
-    if (expectedProfit !== null && expectedProfit > 0) reasons.push(`Estimated gross profit is ₱${expectedProfit.toLocaleString("en-PH")}`);
+    if (priceBait.detected) {
+      dealScore = Math.min(dealScore - 18, 45);
+      risk.score = clamp(risk.score + 28, 0, 100);
+      risk.reasons.unshift("Possible price bait: the description states a higher price");
+      reasons.unshift(priceBait.evidence);
+    }
+    if (evasionDetected) {
+      dealScore -= 35;
+      risk.score = clamp(risk.score + 30, 0, 100);
+      risk.reasons.unshift("Seller downplays or shifts responsibility for a repair");
+      reasons.unshift("Repair-downplaying language detected; treat the affected component as failed until tested");
+    }
+    if (fatalFlags.length) {
+      dealScore = Math.min(dealScore, 15);
+      risk.score = clamp(risk.score + 45, 0, 100);
+      risk.reasons.unshift(...fatalFlags);
+      scoreStatus = "hard-pass";
+    }
+    if (repairReserve) reasons.push(`${manualRepairCost ? "Manual repair cost" : "Suggested repair reserve"}: ₱${repairReserve.toLocaleString("en-PH")}`);
+    if (expectedProfit !== null && expectedProfit > 0) reasons.push(`Projected net margin is ₱${expectedProfit.toLocaleString("en-PH")}`);
     risk.reasons.slice(0, 2).forEach(reason => reasons.push(reason));
+    const freshness = freshnessFor(listing);
+    let recommendation = "Inspect before buying";
+    if (fatalFlags.length || dealScore < 35) recommendation = "Hard pass unless priced for parts and ownership is verified";
+    else if (dealScore >= 75 && expectedProfit > 0) recommendation = "High potential — inspect and test before buying";
+    else if (dealScore >= 55) recommendation = "Potential deal — negotiate after verification";
 
     return {
       score: Math.round(clamp(dealScore, 10, 100)) / 10,
@@ -387,8 +542,14 @@
       referenceValue,
       referenceSource,
       costs,
+      repairReserve,
+      repairReserveSource: manualRepairCost ? "manual" : suggestedRepairReserve ? "suggested-text-or-confirmed-visual" : "none",
+      repairSignals,
+      prepCosts,
+      totalInvestment,
       expectedProfit,
       margin,
+      roi: margin === null ? null : margin * 100,
       fairPrice: referenceValue,
       recommendedMaxBuyPrice,
       suggestedOffer,
@@ -399,6 +560,12 @@
       specs,
       personalization,
       matchScore: Math.round(matchScore) / 10,
+      freshness,
+      priceBait,
+      fatalFlags,
+      evasionDetected,
+      categoryAudit,
+      recommendation,
       confidenceLabel: confidence >= 80 ? "high" : confidence >= 60 ? "medium" : confidence >= 40 ? "limited" : "low"
     };
   }
@@ -410,7 +577,7 @@
     return [...new Set(tokens)].slice(0, 7).join(" ");
   }
 
-  const api = { MIN_COMPARABLES, parsePrice, normalizeMinimumScore, extractSpecs, classifyCategory, similarity, specsCompatible, findComparables, trendFor, removePriceOutliers, weightedMedian, isPlaceholderPrice, analyzeRisk, analyzeCondition, aiAdjustmentFor, completenessFor, scoreListing, buildSearchQuery, preferenceSignals, personalizationFor, median, percentile };
+  const api = { MIN_COMPARABLES, REPAIR_COST_RANGES, parsePrice, normalizeMinimumScore, extractSpecs, classifyCategory, similarity, specsCompatible, findComparables, trendFor, removePriceOutliers, weightedMedian, isPlaceholderPrice, analyzeRisk, analyzeCondition, extractDescriptionPrices, priceBaitFor, repairSignalsFor, fatalFlagsFor, categoryAuditFor, freshnessFor, aiAdjustmentFor, completenessFor, scoreListing, buildSearchQuery, preferenceSignals, personalizationFor, median, percentile };
   root.DealLens = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

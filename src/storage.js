@@ -2,7 +2,7 @@
   "use strict";
 
   const MAX_LISTINGS = 350;
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
 
   function text(value, limit) {
     return String(value || "").slice(0, limit);
@@ -38,6 +38,28 @@
     };
   }
 
+  function sanitizeVisualAudit(audit) {
+    if (!audit || typeof audit !== "object") return undefined;
+    return {
+      summary: text(audit.summary, 600),
+      visualConditionScore: Math.max(0, Math.min(100, number(audit.visualConditionScore) || 0)),
+      hardwareFlags: (audit.hardwareFlags || []).slice(0, 12).map(value => text(value, 240)),
+      verifiedText: (audit.verifiedText || []).slice(0, 12).map(value => text(value, 240)),
+      modelHints: (audit.modelHints || []).slice(0, 8).map(value => text(value, 160)),
+      possibleDefects: (audit.possibleDefects || []).slice(0, 12).map((defect, index) => ({
+        id: text(defect?.id || `visual-${index + 1}`, 80),
+        label: text(defect?.label, 120),
+        evidence: text(defect?.evidence, 400),
+        confidence: Math.max(0, Math.min(1, number(defect?.confidence) || 0)),
+        repairCategory: text(defect?.repairCategory, 80),
+        suggestedCost: Math.max(0, Math.min(100000, number(defect?.suggestedCost) || 0)),
+        confirmed: defect?.confirmed === true
+      })),
+      auditedAt: text(audit.auditedAt, 40),
+      model: text(audit.model, 80)
+    };
+  }
+
   function sanitizeListing(item) {
     if (!item?.id) return null;
     const clean = {
@@ -67,6 +89,8 @@
     });
     const audit = sanitizeAudit(item.localAiAudit);
     if (audit) clean.localAiAudit = audit;
+    const visualAudit = sanitizeVisualAudit(item.visualAudit);
+    if (visualAudit) clean.visualAudit = visualAudit;
     return clean;
   }
 
@@ -180,7 +204,7 @@
     return { feedback, preferenceModel: { weights, feedbackCount: Object.keys(feedback).length } };
   }
 
-  const api = { MAX_LISTINGS, SCHEMA_VERSION, sanitizeListing, sanitizeAudit, pruneListings, listingMap, isQuotaError, persist, mergeCurrentScan, mergeTabScan, scanForTab, statusForTab, mergeTabStatus, migrateStoredData, applyPreferenceFeedback };
+  const api = { MAX_LISTINGS, SCHEMA_VERSION, sanitizeListing, sanitizeAudit, sanitizeVisualAudit, pruneListings, listingMap, isQuotaError, persist, mergeCurrentScan, mergeTabScan, scanForTab, statusForTab, mergeTabStatus, migrateStoredData, applyPreferenceFeedback };
   root.DealLensStorage = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

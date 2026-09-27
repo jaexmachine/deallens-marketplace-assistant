@@ -155,3 +155,10 @@ dialog::backdrop { background: rgba(11, 25, 19, .45); }
 .ai-section h5 { font-size: 10px; margin: 11px 0 5px; text-transform: uppercase; }
 #toast { background: var(--header); border-radius: 9px; bottom: 12px; color: white; font-size: 11px; left: 50%; opacity: 0; padding: 9px 12px; pointer-events: none; position: fixed; transform: translate(-50%, 12px); transition: .2s; z-index: 10; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+.price-alert, .recommendation { align-items: center; background: var(--amber-soft); border: 1px solid var(--line); border-radius: 10px; display: flex; gap: 8px; justify-content: space-between; margin: 9px 0; padding: 10px 12px; }
+.recommendation { background: var(--soft-green); }
+.price-alert span { color: var(--muted); font-size: 10px; }
+.cloud-pill { color: var(--amber); float: right; font-size: 9px; }
+.warning-copy { background: var(--amber-soft); border-radius: 8px; padding: 10px; }
+.visual-finding { align-items: flex-start; border-bottom: 1px solid var(--line); display: flex; gap: 10px; padding: 9px 0; }
+.visual-finding input { margin-top: 3px; }

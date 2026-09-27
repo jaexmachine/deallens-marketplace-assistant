@@ -1,62 +1,51 @@
-# DealLens MVP
+# Deal Breaker – Facebook Marketplace Deal Finder
 
-DealLens is a free, local-only Chrome extension that analyzes Facebook Marketplace electronics listings currently visible or loaded in your browser. It estimates deal potential using comparable asking prices, highlights suspicious or placeholder pricing, and prepares questions for sellers. It does not log in for you, run unattended scraping, send messages, or use paid AI services.
+Deal Breaker is a Chrome extension that analyzes Facebook Marketplace electronics listings visible or loaded in your browser. It estimates realistic flip margins from locally scanned comparable asking prices, highlights misleading prices and defects, and prepares seller questions. It uses your existing Facebook session and never sends messages or buys items automatically.
 
-Version 0.6 is a correctness and reliability release. It requires at least three strong comparable listings before showing a market range or calculated profit, removes price outliers, fixes negated condition phrases such as “no issue” and “not working,” separates financial Deal Score from personal Match Score, makes preference feedback reversible, routes data changes through one background queue, keeps scan status per tab, and migrates saved data to a versioned schema automatically.
+Version 0.7 adds price-bait detection, fatal hardware/ownership flags, Taglish repair-downplaying detection, repair-cost ranges, projected net margin and ROI, separate Deal/Match/Risk/Freshness ratings, laptop CPU checks, iPhone battery sanity checks, and digicam package notes. An optional BYOK photo audit marks every visual result as possible until the user confirms it.
 
 ## Feature coverage
 
-- **Deal score on every listing:** always-on rules-based score, enhanced by the optional on-device AI text audit on supported Chrome devices.
-- **Market price guidance:** robust comparable asking-price range, clearly sourced reference value, suggested offer, and conservative maximum flip-buy price.
-- **Scam and condition analysis:** explicit risk score, red-flag explanations, condition score, and condition notes.
-- **Negotiation:** one click copies the contextual offer and opens the Facebook listing so it can be pasted into Messenger. DealLens never sends without the user.
+- **Deal score:** a transparent 1.0–10.0 rating for every scanned listing.
+- **Market guidance:** robust comparable asking-price range, reference value, maximum flip-buy price, projected net margin, and ROI.
+- **Risk and condition:** placeholder/price-bait alerts, scam language, ownership locks, disclosed failures, Taglish repair wording, and condition notes.
+- **Negotiation:** one click copies a contextual offer and opens the listing for manual use in Messenger. Deal Breaker never sends it automatically.
 - **Batch analysis:** visible search/category results are analyzed together and accumulated while scrolling.
-- **Existing session:** DealLens runs inside the already signed-in Marketplace tab and never requests Facebook credentials.
-- **Dark mode:** follow the operating-system theme or select Light/Dark in Settings.
+- **Personalization:** Watch and Remove feedback changes Match Score only, never financial Deal Score.
+- **Existing session and dark mode:** no separate Facebook login; automatic, light, and dark themes.
 
 ## Install
 
-1. Extract `DealLens-MVP.zip` to a permanent folder.
-2. In Chrome, open `chrome://extensions`.
+1. Extract `Deal-Breaker-0.7.zip` to a permanent folder.
+2. Open `chrome://extensions` in Chrome.
 3. Enable **Developer mode**.
 4. Click **Load unpacked**.
 5. Select the extracted folder containing `manifest.json`.
-6. Pin DealLens to the toolbar.
+6. Pin Deal Breaker to the toolbar.
 
 ## Use
 
-1. Open a Facebook Marketplace search results page.
-2. Click the DealLens toolbar icon to open its side panel.
-3. Click **Scan loaded results**.
-4. Scroll to load more Marketplace results. Live analysis is enabled by default.
-5. Open a listing's **Details** to see its reasoning, price range, risk signals, and seller-message draft.
-6. Use **Find similar** to open a Marketplace search based on the detected model and specifications; scan those results to improve the local price range.
+Open Facebook Marketplace, open Deal Breaker, and click **Scan loaded results**. Scroll to load more listings. Open a listing card for financial spread, category checks, repair-cost evidence, inspection questions, AI audits, and a negotiation draft. **Find similar** opens an exact-model Marketplace search; scan those results to improve the local market range.
 
-The scan-status line reports how many visible cards were found, how many were new, and when the scan completed. **Promising on this page** applies the minimum score to both valued and provisional candidates. **Verified-value deals** shows only listings with usable comparable or manually supplied values. Use **All local history** to review products from earlier searches.
+A score prefixed with `~` is provisional. At least three strong, outlier-filtered comparable listings—or a manual reference—are required before Deal Breaker claims a market range or projected profit. Match Score, Risk, and Freshness remain separate from Deal Score.
 
-Deal Scores combine market value, condition, safety, and listing completeness. Personal preferences are reported separately as a Match Score, so liking a product cannot make an overpriced listing look like a better financial deal. A Deal Score prefixed with `~` is provisional because DealLens does not yet have enough price evidence. Provisional listings cannot be labeled Good Deals. At least three strong, outlier-filtered comparable listings—or a clearly labeled manual reference—are required to unlock a valued score and profit estimate. The Details view shows every component, evidence quality, and confidence level.
+## AI modes
 
-Use **Watch** as positive feedback and **Remove** as negative feedback. Feedback is stored once per listing and reverses when an item is unwatched or dismissed listings are restored. Removed listings stay dismissed on later scans. Settings lets you allow dismissed listings again or reset the learned preference model.
+The optional **local text audit** uses Chrome's built-in Prompt API when supported. Listing text stays on the device, and the rules-only scorer remains fully functional without it.
 
-## Optional local AI text audit
+The optional **BYOK photo audit** uploads only images the user explicitly chooses to Google Gemini. The API key is stored only in `chrome.storage.session` and is forgotten when Chrome ends. Images and keys are not added to listing history. All image findings are labelled possible and do not affect costs or scores until the user checks and saves a confirmation.
 
-Select **AI-audit current batch**, or open a listing's Details and select **Run local text audit**. On supported computers, Chrome's built-in Prompt API analyzes listing text with an on-device model. DealLens checks availability first and reports model-download progress. The audit extracts evidence-backed defect signals, possible contradictions, specifications, advisory liquidity, and verification questions.
+## Scoring and safety
 
-The AI audit is optional. It can adjust the 10-point Deal Score within a transparent −1.8 to +0.5 bound, but never changes repair costs, comparable values, or placeholder-price safeguards. It does not send text to an external AI service and uses no API key. The original score remains fully functional when built-in AI is unavailable. Chrome may require a substantial one-time model download and supported hardware. Filipino/Taglish interpretation should be treated cautiously because it is not an officially declared Prompt API language.
+Deal Breaker uses the higher description price when possible price bait is detected. Net margin is `reference value − (effective asking price + repair reserve + transport/prep)`. ROI divides that net margin by the total investment. Text-inferred repairs show a Philippine cost range and a suggested reserve that can be replaced with a manual estimate. Old listings lower Freshness only; age does not automatically make a deal bad. Linux/Ubuntu is a verification note rather than an automatic rejection.
 
-The toolbar badge shows how many promising listings were detected in the latest batch. The Details view also lets you override the reference value, enter item-specific repair and transport costs, follow an electronics inspection checklist, and record eventual purchase/resale outcomes.
+Scores are decision support, not guarantees. Inspect in person, verify ownership and serial information, test important functions, and avoid advance payment when you cannot verify the seller or item.
 
-The price-trend database is created from listings you scan. Facebook listings generally show asking prices rather than confirmed sale prices, so DealLens labels them accordingly. More relevant scans produce better comparisons.
-
-## Scoring model
-
-DealLens combines a robust comparable-price discount, condition language, risk indicators, sample quality, and estimated costs. Budget and learned interests affect only the separate Match Score. Comparable asking prices are filtered by category, specifications, textual similarity, and price outliers. Placeholder prices are marked as unverified and cannot receive a high-confidence Deal Score. Every score includes human-readable reasons.
-
-Scores and risk flags are decision support—not guarantees. Inspect products in person, verify model and serial information, test important functions, and avoid advance payment when you cannot verify the seller or item.
+Deal Breaker is not affiliated with, endorsed by, or sponsored by Facebook or Meta.
 
 ## Development
 
-Requirements: Node.js 20 or newer and `zip` for packaging.
+Requires Node.js 20+ and `zip`.
 
 ```bash
 npm test
@@ -64,4 +53,4 @@ npm run check
 npm run package
 ```
 
-Facebook can change its page structure at any time. If scanning stops finding cards, the extraction heuristics in `src/content.js` may need adjustment.
+Facebook can change its page structure. If scanning stops finding cards, update the extraction heuristics in `src/content.js`.

@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = {
 };
 
 let storageQueue = Promise.resolve();
+chrome.storage.session?.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
 
 function queueStorage(task) {
   const result = storageQueue.then(task, task);

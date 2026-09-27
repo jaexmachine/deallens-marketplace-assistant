@@ -105,6 +105,9 @@
       Date.now() - new Date(item.firstSeenAt).getTime() < 86400000 ? '<span class="flag">New</span>' : "",
       analysis.placeholder.value ? '<span class="flag warn">Price unverified</span>' : "",
       item.localAiAudit ? '<span class="flag ai">AI audited</span>' : "",
+      item.visualAudit ? '<span class="flag ai">Visual audit</span>' : "",
+      analysis.priceBait.detected ? '<span class="flag warn">Price bait</span>' : "",
+      analysis.fatalFlags.length ? '<span class="flag warn">Hard pass flag</span>' : "",
       analysis.scoreStatus === "valued" && analysis.score >= state.settings.minimumScore && !analysis.placeholder.value
         ? `<span class="flag good">Good deal ≥ ${rating(state.settings.minimumScore)}</span>`
         : analysis.scoreStatus === "provisional" && analysis.score >= state.settings.minimumScore
@@ -143,7 +146,7 @@
     const hasCurrent = currentRows.length > 0;
     const hasHistory = state.listings.length > 0;
     $("#emptyTitle").textContent = hasCurrent ? `No products meet the current ${rating(state.settings.minimumScore)}/10 filter` : hasHistory ? "Scan this Marketplace page" : "No listings scanned yet";
-    $("#emptyMessage").textContent = hasCurrent ? "Choose All on this page to review lower scores, or change the minimum score in Settings." : hasHistory ? "Your older scans are still available under All local history." : "DealLens analyzes only Marketplace results that are visible or loaded in your browser.";
+    $("#emptyMessage").textContent = hasCurrent ? "Choose All on this page to review lower scores, or change the minimum score in Settings." : hasHistory ? "Your older scans are still available under All local history." : "Deal Breaker analyzes only Marketplace results that are visible or loaded in your browser.";
     const watches = filteredListings(true);
     $("#watchlistList").innerHTML = watches.map(card).join("");
     $("#watchEmpty").style.display = watches.length ? "none" : "block";
@@ -219,23 +222,42 @@
       <p class="fine-print">Audited locally ${new Date(audit.auditedAt).toLocaleString()}. The bounded AI score adjustment is shown above; repair costs and reference values remain unchanged.</p>`;
   }
 
+  function visualAuditMarkup(audit) {
+    if (!audit) return '<p class="ai-empty">No cloud visual audit has been run. Selected images are sent only when you click Audit visuals.</p>';
+    const defects = audit.possibleDefects?.length
+      ? audit.possibleDefects.map(defect => `<label class="visual-finding"><input type="checkbox" data-visual-id="${escapeHtml(defect.id)}" ${defect.confirmed ? "checked" : ""}><span><strong>Possible: ${escapeHtml(defect.label)}</strong> · ${Math.round(defect.confidence * 100)}%<br>${escapeHtml(defect.evidence)}${defect.suggestedCost ? ` · suggested reserve ${money(defect.suggestedCost)}` : ""}</span></label>`).join("")
+      : "<p>No image-supported possible defects were returned.</p>";
+    return `<div class="ai-verdict"><strong>${escapeHtml(audit.summary)}</strong><span>Visual condition ${componentRating(audit.visualConditionScore)}/10</span></div>${defects}${audit.hardwareFlags?.length ? `<h5>Hardware flags</h5><ul>${audit.hardwareFlags.map(value => `<li>${escapeHtml(value)}</li>`).join("")}</ul>` : ""}<p class="fine-print">Unchecked findings do not affect costs or scores. Confirm only what you can verify from the original photos or in person.</p>`;
+  }
+
   function showDetails(item) {
     const a = item.analysis;
     const specs = Object.entries(a.specs || {}).map(([key, value]) => `<span class="flag">${escapeHtml(key)}: ${escapeHtml(value)}</span>`).join("") || '<span class="flag">No specifications detected</span>';
     $("#detailContent").innerHTML = `
-      <div class="detail-score"><div class="score-bubble ${a.score >= 7.5 ? "" : a.score >= 5.5 ? "mid" : "low"}">${a.placeholder.value ? "?" : a.scoreStatus === "provisional" ? `~${rating(a.score)}` : rating(a.score)}</div><div><h3>${escapeHtml(item.title)}</h3><p class="listing-meta">${escapeHtml(a.category)} · ${item.priceLabel ? escapeHtml(item.priceLabel) : money(item.price)} · ${a.scoreEngine === "hybrid-ai" ? `AI-enhanced (${a.aiAdjustment >= 0 ? "+" : ""}${rating(a.aiAdjustment)})` : "rules-only"} · ${a.confidence}% ${escapeHtml(a.confidenceLabel)} confidence</p><p class="listing-meta">Personal match: ${rating(a.matchScore)}/10 · does not change Deal Score</p></div></div>
-      <div class="metric-row"><div><strong>${money(a.referenceValue)}</strong><span>${a.referenceSource === "manual" ? "Manual reference" : "Comparable reference"}</span></div><div><strong>${a.trend.sufficient ? `${money(a.trend.low)}–${money(a.trend.high)}` : "—"}</strong><span>Asking-price range</span></div><div><strong>${money(a.recommendedMaxBuyPrice)}</strong><span>Max flip buy</span></div><div><strong>${money(a.expectedProfit)}</strong><span>Est. gross profit</span></div></div>
+      <div class="detail-score"><div class="score-bubble ${a.score >= 7.5 ? "" : a.score >= 5.5 ? "mid" : "low"}">${a.placeholder.value ? "?" : a.scoreStatus === "provisional" ? `~${rating(a.score)}` : rating(a.score)}</div><div><h3>${escapeHtml(item.title)}</h3><p class="listing-meta">${escapeHtml(a.category)} · ${item.priceLabel ? escapeHtml(item.priceLabel) : money(item.price)} · ${a.scoreEngine === "hybrid-ai" ? `AI-enhanced (${a.aiAdjustment >= 0 ? "+" : ""}${rating(a.aiAdjustment)})` : "rules-only"} · ${a.confidence}% ${escapeHtml(a.confidenceLabel)} confidence</p><p class="listing-meta">Match ${rating(a.matchScore)}/10 · Risk ${componentRating(a.risk.score)}/10 · Freshness ${rating(a.freshness.score)}/10</p></div></div>
+      <p class="recommendation"><strong>${escapeHtml(a.recommendation)}</strong></p>
+      ${a.priceBait.detected ? `<div class="price-alert"><strong>Possible price bait</strong><span>Displayed ${money(a.priceBait.displayedPrice)} · description ${money(a.priceBait.descriptionPrice)}. Calculations use the higher price.</span></div>` : ""}
+      <div class="metric-row"><div><strong>${money(a.referenceValue)}</strong><span>${a.referenceSource === "manual" ? "Manual reference" : "Comparable reference"}</span></div><div><strong>${money(a.priceBait.effectivePrice)}</strong><span>Effective buy price</span></div><div><strong>${money(a.repairReserve)}</strong><span>${a.repairReserveSource === "manual" ? "Manual repair" : "Suggested repair reserve"}</span></div><div><strong>${money(a.expectedProfit)}</strong><span>Projected net</span></div><div><strong>${a.roi === null ? "—" : `${a.roi.toFixed(1)}%`}</strong><span>Projected ROI</span></div></div>
       <div class="detail-section"><h4>Deal Score components · 1–10</h4><div class="component-grid">${Object.entries(a.components).map(([name, value]) => `<div><span>${escapeHtml(name)}</span><strong>${value === null ? "—" : componentRating(value)}</strong></div>`).join("")}</div><p class="fine-print">Personal interests are shown as a separate Match Score and never inflate financial deal quality. A provisional score excludes market value and cannot be labeled a Good Deal.</p></div>
       <div class="detail-section"><h4>Why this score</h4><ul>${a.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join("")}</ul></div>
       <div class="detail-section"><h4>Condition · ${componentRating(a.condition.score)}/10</h4><p><strong>${escapeHtml(a.condition.label)}</strong></p><ul>${a.condition.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join("")}</ul></div>
       <div class="detail-section"><h4>Scam and red-flag check · ${componentRating(a.risk.score)}/10 risk</h4>${a.risk.reasons.length ? `<ul>${a.risk.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>` : "<p>No explicit text-based red flags detected. Still verify ownership and inspect before paying.</p>"}</div>
       <div class="detail-section"><h4>Detected specifications</h4><div class="flag-row">${specs}</div></div>
+      ${a.categoryAudit.notes.length ? `<div class="detail-section"><h4>Category checks</h4><ul>${a.categoryAudit.notes.map(note => `<li>${escapeHtml(note)}</li>`).join("")}</ul></div>` : ""}
+      ${a.repairSignals.length ? `<div class="detail-section"><h4>Suggested repair reserves</h4><ul>${a.repairSignals.map(signal => `<li>${escapeHtml(signal.label)}: ${money(signal.low)}–${money(signal.high)} (using ${money(signal.suggested)} until edited) · “${escapeHtml(signal.evidence)}”</li>`).join("")}</ul></div>` : ""}
       <div class="detail-section"><h4>Comparable asking-price evidence</h4><p>${a.trend.sufficient ? `${money(a.trend.low)} – ${money(a.trend.high)} from ${a.trend.count} strong locally scanned listings (${escapeHtml(a.trend.quality)} evidence).` : `${a.trend.count} usable comparable${a.trend.count === 1 ? "" : "s"}; at least ${DealLens.MIN_COMPARABLES} are required before DealLens displays a market range. Scan more exact-model results.`}${a.trend.rejectedCount ? ` ${a.trend.rejectedCount} price outlier${a.trend.rejectedCount === 1 ? " was" : "s were"} excluded.` : ""}</p></div>
       <div class="detail-section ai-section"><h4>Local AI text audit <span class="local-pill">On-device</span></h4>
         <div id="aiAuditStatus" class="ai-status">Checking Chrome built-in AI availability…</div>
         <div id="aiAuditResult">${aiAuditMarkup(item.localAiAudit)}</div>
         <button id="runAiAudit" class="primary-button" disabled>${item.localAiAudit ? "Run audit again" : "Run local text audit"}</button>
         <p class="fine-print">Optional. Listing text stays on this device. A completed audit can adjust the 10-point score by at most +0.5 or −1.8; placeholder-price safeguards still apply.</p>
+      </div>
+      <div class="detail-section ai-section"><h4>Optional photo audit <span class="cloud-pill">BYOK cloud</span></h4>
+        <p class="warning-copy"><strong>Privacy warning:</strong> photos you choose will be uploaded to Google Gemini for analysis. Your key is kept only in Chrome session storage and is forgotten when Chrome ends. No images are saved by Deal Breaker.</p>
+        <div class="edit-grid"><label>Gemini API key<input id="visionApiKey" type="password" autocomplete="off" placeholder="Session only"></label><label>Listing photos / screenshots<input id="visionFiles" type="file" accept="image/*" multiple></label></div>
+        <div id="visualAuditResult">${visualAuditMarkup(item.visualAudit)}</div>
+        <div class="card-actions"><button id="runVisualAudit">Audit visuals</button><button id="saveVisualConfirmations" ${item.visualAudit ? "" : "disabled"}>Save confirmations</button><button id="forgetVisionKey">Forget key</button></div>
+        <div id="visionStatus" class="ai-status">AI findings are advisory until you confirm them.</div>
       </div>
       <div class="detail-section"><h4>Edit valuation and costs</h4><div class="edit-grid">
         <label>Reference value<input id="referencePrice" type="number" min="0" value="${item.manualReferencePrice || ""}" placeholder="${a.trend.median || ""}"></label>
@@ -252,6 +274,9 @@
     $("#copyMessage").addEventListener("click", async () => { await navigator.clipboard.writeText(messageFor(item)); showToast("Message copied"); });
     $("#negotiateNow").addEventListener("click", () => negotiate(item));
     $("#runAiAudit").addEventListener("click", () => runLocalAiAudit(item));
+    $("#runVisualAudit").addEventListener("click", () => runVisualAudit(item));
+    $("#saveVisualConfirmations").addEventListener("click", () => saveVisualConfirmations(item));
+    $("#forgetVisionKey").addEventListener("click", async () => { await chrome.storage.session.remove("dealBreakerGeminiKey"); $("#visionApiKey").value = ""; showToast("Session key forgotten"); });
     $("#saveEstimate").addEventListener("click", () => saveListingFields(item, {
       manualReferencePrice: Number($("#referencePrice").value) || null,
       repairCost: Number($("#repairCost").value) || 0,
@@ -263,6 +288,50 @@
     }, "Outcome saved"));
     if (!$("#detailDialog").open) $("#detailDialog").showModal();
     updateAiAvailability();
+    chrome.storage.session.get("dealBreakerGeminiKey").then(value => { if ($("#visionApiKey")) $("#visionApiKey").value = value.dealBreakerGeminiKey || ""; });
+  }
+
+  async function imageData(file) {
+    if (!file.type.startsWith("image/")) throw new Error("Only image files can be audited.");
+    if (file.size > 8 * 1024 * 1024) throw new Error(`${file.name} is larger than 8 MB.`);
+    const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); });
+    return { mimeType: file.type, data: String(dataUrl).split(",")[1] };
+  }
+
+  async function runVisualAudit(item) {
+    const button = $("#runVisualAudit");
+    const status = $("#visionStatus");
+    const apiKey = $("#visionApiKey").value.trim();
+    const files = [...$("#visionFiles").files].slice(0, 4);
+    button.disabled = true;
+    status.textContent = "Preparing selected images…";
+    try {
+      await DealBreakerVision.ensurePermission();
+      await chrome.storage.session.set({ dealBreakerGeminiKey: apiKey });
+      const images = await Promise.all(files.map(imageData));
+      status.textContent = "Uploading selected images to Gemini for a cautious visual review…";
+      const visualAudit = await DealBreakerVision.audit({ apiKey, listing: item, images });
+      await mutate({ type: "DEALLENS_UPDATE_LISTINGS", patches: [{ listingId: item.id, patch: { visualAudit } }] });
+      await loadState();
+      const updated = state.listings.find(value => value.id === item.id);
+      if (updated) showDetails(updated);
+      showToast("Visual audit complete — review and confirm findings");
+    } catch (error) {
+      status.textContent = error?.message || "Visual audit failed.";
+      status.dataset.state = "error";
+      button.disabled = false;
+    }
+  }
+
+  async function saveVisualConfirmations(item) {
+    if (!item.visualAudit) return;
+    const checked = new Set([...document.querySelectorAll("[data-visual-id]:checked")].map(input => input.dataset.visualId));
+    const visualAudit = { ...item.visualAudit, possibleDefects: item.visualAudit.possibleDefects.map(defect => ({ ...defect, confirmed: checked.has(defect.id) })) };
+    await mutate({ type: "DEALLENS_UPDATE_LISTINGS", patches: [{ listingId: item.id, patch: { visualAudit } }] });
+    await loadState();
+    const updated = state.listings.find(value => value.id === item.id);
+    if (updated) showDetails(updated);
+    showToast("Confirmed visual findings saved");
   }
 
   async function updateAiAvailability() {
@@ -400,7 +469,7 @@
       // The tab may predate an extension reload, so install a fresh scanner below.
     }
 
-    setScanStatus("scanning", "Connecting DealLens to this Marketplace tab…");
+    setScanStatus("scanning", "Connecting Deal Breaker to this Marketplace tab…");
     await chrome.scripting.insertCSS({ target: { tabId }, files: ["styles/content.css"] }).catch(() => {});
     await chrome.scripting.executeScript({ target: { tabId }, files: ["src/scoring.js", "src/scan-coordinator.js", "src/content.js"] });
   }
@@ -427,7 +496,7 @@
     } catch (error) {
       const message = String(error?.message || "");
       const friendlyMessage = message.includes("Receiving end does not exist")
-        ? "DealLens could not connect. Refresh the Marketplace tab once, then scan again."
+        ? "Deal Breaker could not connect. Refresh the Marketplace tab once, then scan again."
         : message || "Could not scan this page";
       setScanStatus("error", friendlyMessage);
       showToast(friendlyMessage);

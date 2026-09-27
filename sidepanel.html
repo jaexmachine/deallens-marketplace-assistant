@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DealLens</title>
+  <title>Deal Breaker</title>
   <link rel="stylesheet" href="styles/panel.css">
 </head>
 <body>
   <header class="app-header">
     <div class="brand-mark">D</div>
     <div>
-      <h1>DealLens</h1>
-      <p>Local Marketplace deal assistant</p>
+      <h1>Deal Breaker</h1>
+      <p>Facebook Marketplace Deal Finder</p>
     </div>
     <span class="privacy-pill">On-device</span>
   </header>
@@ -35,7 +35,7 @@
       </label>
     </section>
 
-    <nav class="tabs" aria-label="DealLens sections">
+    <nav class="tabs" aria-label="Deal Breaker sections">
       <button class="tab active" data-tab="deals">Deals</button>
       <button class="tab" data-tab="watchlist">Watchlist</button>
       <button class="tab" data-tab="settings">Settings</button>
@@ -88,12 +88,12 @@
       </form>
       <section class="learning-card">
         <div><strong>Personalization</strong><span id="learningStatus">No feedback yet</span></div>
-        <p>Watching items teaches DealLens what you like. Dismissing items teaches it what to show less often. This changes Match Score only—not financial Deal Score.</p>
+        <p>Watching items teaches Deal Breaker what you like. Dismissing items teaches it what to show less often. This changes Match Score only—not financial Deal Score.</p>
         <button id="resetLearning" class="quiet-button">Reset learned preferences</button>
       </section>
       <button id="restoreDismissed" class="quiet-button">Allow dismissed listings again (<span id="dismissedCount">0</span>)</button>
       <button id="clearData" class="danger-button">Clear locally saved listings</button>
-      <p class="fine-print">DealLens stores preferences, scans, and watchlists only in Chrome local storage. Scores are estimates based on asking prices—not confirmed sales.</p>
+      <p class="fine-print">Deal Breaker stores preferences, scans, and watchlists only in Chrome local storage. Scores are estimates based on asking prices—not confirmed sales. Deal Breaker is not affiliated with, endorsed by, or sponsored by Facebook or Meta.</p>
     </section>
   </main>
 
@@ -107,6 +107,7 @@
   <script src="src/storage.js"></script>
   <script src="src/scan-coordinator.js"></script>
   <script src="src/ai-auditor.js"></script>
+  <script src="src/vision-auditor.js"></script>
   <script src="src/sidepanel.js"></script>
 </body>
 </html>
